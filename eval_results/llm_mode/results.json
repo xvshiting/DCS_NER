@@ -1,0 +1,295 @@
+{
+  "config": {
+    "gliner_ckpt": "checkpoints/run1/best/checkpoint.pt",
+    "backbone": "/data/model_hub/mdeberta-v3-base",
+    "model_arch": "deberta_span",
+    "max_span_width": 12,
+    "label_chunk_size": 16,
+    "threshold": 0.5,
+    "test_data": "/data/dataset/ner/instruct_uie_ner",
+    "max_samples_per_subset": 20,
+    "batch_size": 8,
+    "desc_mode": "llm",
+    "desc_cache_dir": "dataset/",
+    "precomputed_descs": "descriptions_cache.jsonl",
+    "llm_base": "/data/model_hub/qwen/Qwen3-1.7B",
+    "llm_adapter": "/home/will/Projects/LLaMA-Factory/saves/Qwen3-1.7B-Thinking/lora/train_2026-02-09-12-46-24",
+    "llm_max_new_tokens": 512,
+    "llm_desc_key": "D6",
+    "max_text_len": 256,
+    "max_label_len": 128,
+    "output_dir": "eval_results/llm_mode",
+    "save_predictions": true
+  },
+  "overall": {
+    "precision": 0.6153250773993808,
+    "recall": 0.5389830508474577,
+    "f1": 0.5746295627032888,
+    "n_samples": 435,
+    "tp": 795,
+    "fp": 497,
+    "fn": 680
+  },
+  "subsets": [
+    {
+      "subset": "ACE_2004",
+      "precision": 0.37777777777777777,
+      "recall": 0.25757575757575757,
+      "f1": 0.3063063063063063,
+      "n_samples": 16,
+      "tp": 17,
+      "fp": 28,
+      "fn": 49
+    },
+    {
+      "subset": "ACE_2005",
+      "precision": 0.36363636363636365,
+      "recall": 0.18181818181818182,
+      "f1": 0.24242424242424246,
+      "n_samples": 15,
+      "tp": 12,
+      "fp": 21,
+      "fn": 54
+    },
+    {
+      "subset": "AnatEM",
+      "precision": 0.4,
+      "recall": 0.4444444444444444,
+      "f1": 0.4210526315789474,
+      "n_samples": 8,
+      "tp": 4,
+      "fp": 6,
+      "fn": 5
+    },
+    {
+      "subset": "Broad_Tweet_Corpus",
+      "precision": 0.6875,
+      "recall": 0.8148148148148148,
+      "f1": 0.7457627118644067,
+      "n_samples": 16,
+      "tp": 22,
+      "fp": 10,
+      "fn": 5
+    },
+    {
+      "subset": "CoNLL_2003",
+      "precision": 0.7368421052631579,
+      "recall": 0.6829268292682927,
+      "f1": 0.7088607594936709,
+      "n_samples": 19,
+      "tp": 28,
+      "fp": 10,
+      "fn": 13
+    },
+    {
+      "subset": "CrossNER_AI",
+      "precision": 0.7285714285714285,
+      "recall": 0.5730337078651685,
+      "f1": 0.6415094339622641,
+      "n_samples": 20,
+      "tp": 51,
+      "fp": 19,
+      "fn": 38
+    },
+    {
+      "subset": "CrossNER_literature",
+      "precision": 0.7280701754385965,
+      "recall": 0.7155172413793104,
+      "f1": 0.7217391304347828,
+      "n_samples": 20,
+      "tp": 83,
+      "fp": 31,
+      "fn": 33
+    },
+    {
+      "subset": "CrossNER_music",
+      "precision": 0.75,
+      "recall": 0.8625,
+      "f1": 0.8023255813953489,
+      "n_samples": 20,
+      "tp": 138,
+      "fp": 46,
+      "fn": 22
+    },
+    {
+      "subset": "CrossNER_politics",
+      "precision": 0.581081081081081,
+      "recall": 0.6825396825396826,
+      "f1": 0.6277372262773723,
+      "n_samples": 20,
+      "tp": 86,
+      "fp": 62,
+      "fn": 40
+    },
+    {
+      "subset": "CrossNER_science",
+      "precision": 0.5652173913043478,
+      "recall": 0.6842105263157895,
+      "f1": 0.6190476190476191,
+      "n_samples": 20,
+      "tp": 78,
+      "fp": 60,
+      "fn": 36
+    },
+    {
+      "subset": "FabNER",
+      "precision": 0.2702702702702703,
+      "recall": 0.12658227848101267,
+      "f1": 0.1724137931034483,
+      "n_samples": 20,
+      "tp": 10,
+      "fp": 27,
+      "fn": 69
+    },
+    {
+      "subset": "FindVehicle",
+      "precision": 0.5384615384615384,
+      "recall": 0.06306306306306306,
+      "f1": 0.1129032258064516,
+      "n_samples": 20,
+      "tp": 7,
+      "fp": 6,
+      "fn": 104
+    },
+    {
+      "subset": "GENIA_NER",
+      "precision": 0.62,
+      "recall": 0.5849056603773585,
+      "f1": 0.6019417475728155,
+      "n_samples": 19,
+      "tp": 31,
+      "fp": 19,
+      "fn": 22
+    },
+    {
+      "subset": "HarveyNER",
+      "precision": 0.34782608695652173,
+      "recall": 0.4,
+      "f1": 0.37209302325581395,
+      "n_samples": 16,
+      "tp": 8,
+      "fp": 15,
+      "fn": 12
+    },
+    {
+      "subset": "MultiNERD",
+      "precision": 0.5945945945945946,
+      "recall": 0.9166666666666666,
+      "f1": 0.7213114754098361,
+      "n_samples": 20,
+      "tp": 22,
+      "fp": 15,
+      "fn": 2
+    },
+    {
+      "subset": "Ontonotes",
+      "precision": 0.5217391304347826,
+      "recall": 0.34285714285714286,
+      "f1": 0.4137931034482759,
+      "n_samples": 8,
+      "tp": 12,
+      "fp": 11,
+      "fn": 23
+    },
+    {
+      "subset": "PolyglotNER",
+      "precision": 0.4878048780487805,
+      "recall": 0.6896551724137931,
+      "f1": 0.5714285714285714,
+      "n_samples": 14,
+      "tp": 20,
+      "fp": 21,
+      "fn": 9
+    },
+    {
+      "subset": "TweetNER7",
+      "precision": 0.6896551724137931,
+      "recall": 0.5970149253731343,
+      "f1": 0.64,
+      "n_samples": 20,
+      "tp": 40,
+      "fp": 18,
+      "fn": 27
+    },
+    {
+      "subset": "WikiANN_en",
+      "precision": 0.7083333333333334,
+      "recall": 0.6538461538461539,
+      "f1": 0.68,
+      "n_samples": 20,
+      "tp": 17,
+      "fp": 7,
+      "fn": 9
+    },
+    {
+      "subset": "WikiNeural",
+      "precision": 0.7307692307692307,
+      "recall": 0.95,
+      "f1": 0.8260869565217392,
+      "n_samples": 15,
+      "tp": 19,
+      "fp": 7,
+      "fn": 1
+    },
+    {
+      "subset": "bc2gm",
+      "precision": 0.7692307692307693,
+      "recall": 0.5,
+      "f1": 0.6060606060606061,
+      "n_samples": 10,
+      "tp": 10,
+      "fp": 3,
+      "fn": 10
+    },
+    {
+      "subset": "bc4chemd",
+      "precision": 0.47368421052631576,
+      "recall": 0.8181818181818182,
+      "f1": 0.6,
+      "n_samples": 7,
+      "tp": 9,
+      "fp": 10,
+      "fn": 2
+    },
+    {
+      "subset": "bc5cdr",
+      "precision": 0.7567567567567568,
+      "recall": 0.5384615384615384,
+      "f1": 0.6292134831460674,
+      "n_samples": 20,
+      "tp": 28,
+      "fp": 9,
+      "fn": 24
+    },
+    {
+      "subset": "mit-movie",
+      "precision": 0.6666666666666666,
+      "recall": 0.4864864864864865,
+      "f1": 0.5625,
+      "n_samples": 20,
+      "tp": 18,
+      "fp": 9,
+      "fn": 19
+    },
+    {
+      "subset": "mit-restaurant",
+      "precision": 0.3333333333333333,
+      "recall": 0.24444444444444444,
+      "f1": 0.28205128205128205,
+      "n_samples": 20,
+      "tp": 11,
+      "fp": 22,
+      "fn": 34
+    },
+    {
+      "subset": "ncbi",
+      "precision": 0.7368421052631579,
+      "recall": 0.4375,
+      "f1": 0.5490196078431372,
+      "n_samples": 12,
+      "tp": 14,
+      "fp": 5,
+      "fn": 18
+    }
+  ]
+}

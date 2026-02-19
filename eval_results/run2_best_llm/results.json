@@ -1,0 +1,295 @@
+{
+  "config": {
+    "gliner_ckpt": "checkpoints/run2/best/checkpoint.pt",
+    "backbone": "/data/model_hub/mdeberta-v3-base",
+    "model_arch": "deberta_span_v2",
+    "max_span_width": 12,
+    "label_chunk_size": 16,
+    "threshold": 0.5,
+    "test_data": "/data/dataset/ner/instruct_uie_ner",
+    "max_samples_per_subset": 20,
+    "batch_size": 8,
+    "desc_mode": "llm",
+    "desc_cache_dir": "dataset/",
+    "precomputed_descs": "descriptions_cache.jsonl",
+    "llm_base": "/data/model_hub/qwen/Qwen3-1.7B",
+    "llm_adapter": "/home/will/Projects/LLaMA-Factory/saves/Qwen3-1.7B-Thinking/lora/train_2026-02-09-12-46-24",
+    "llm_max_new_tokens": 512,
+    "llm_desc_key": "D6",
+    "max_text_len": 256,
+    "max_label_len": 128,
+    "output_dir": "eval_results/run2_best_llm",
+    "save_predictions": true
+  },
+  "overall": {
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1": 0.0,
+    "n_samples": 435,
+    "tp": 0,
+    "fp": 0,
+    "fn": 1475
+  },
+  "subsets": [
+    {
+      "subset": "ACE_2004",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "n_samples": 16,
+      "tp": 0,
+      "fp": 0,
+      "fn": 66
+    },
+    {
+      "subset": "ACE_2005",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "n_samples": 15,
+      "tp": 0,
+      "fp": 0,
+      "fn": 66
+    },
+    {
+      "subset": "AnatEM",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "n_samples": 8,
+      "tp": 0,
+      "fp": 0,
+      "fn": 9
+    },
+    {
+      "subset": "Broad_Tweet_Corpus",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "n_samples": 16,
+      "tp": 0,
+      "fp": 0,
+      "fn": 27
+    },
+    {
+      "subset": "CoNLL_2003",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "n_samples": 19,
+      "tp": 0,
+      "fp": 0,
+      "fn": 41
+    },
+    {
+      "subset": "CrossNER_AI",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "n_samples": 20,
+      "tp": 0,
+      "fp": 0,
+      "fn": 89
+    },
+    {
+      "subset": "CrossNER_literature",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "n_samples": 20,
+      "tp": 0,
+      "fp": 0,
+      "fn": 116
+    },
+    {
+      "subset": "CrossNER_music",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "n_samples": 20,
+      "tp": 0,
+      "fp": 0,
+      "fn": 160
+    },
+    {
+      "subset": "CrossNER_politics",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "n_samples": 20,
+      "tp": 0,
+      "fp": 0,
+      "fn": 126
+    },
+    {
+      "subset": "CrossNER_science",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "n_samples": 20,
+      "tp": 0,
+      "fp": 0,
+      "fn": 114
+    },
+    {
+      "subset": "FabNER",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "n_samples": 20,
+      "tp": 0,
+      "fp": 0,
+      "fn": 79
+    },
+    {
+      "subset": "FindVehicle",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "n_samples": 20,
+      "tp": 0,
+      "fp": 0,
+      "fn": 111
+    },
+    {
+      "subset": "GENIA_NER",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "n_samples": 19,
+      "tp": 0,
+      "fp": 0,
+      "fn": 53
+    },
+    {
+      "subset": "HarveyNER",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "n_samples": 16,
+      "tp": 0,
+      "fp": 0,
+      "fn": 20
+    },
+    {
+      "subset": "MultiNERD",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "n_samples": 20,
+      "tp": 0,
+      "fp": 0,
+      "fn": 24
+    },
+    {
+      "subset": "Ontonotes",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "n_samples": 8,
+      "tp": 0,
+      "fp": 0,
+      "fn": 35
+    },
+    {
+      "subset": "PolyglotNER",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "n_samples": 14,
+      "tp": 0,
+      "fp": 0,
+      "fn": 29
+    },
+    {
+      "subset": "TweetNER7",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "n_samples": 20,
+      "tp": 0,
+      "fp": 0,
+      "fn": 67
+    },
+    {
+      "subset": "WikiANN_en",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "n_samples": 20,
+      "tp": 0,
+      "fp": 0,
+      "fn": 26
+    },
+    {
+      "subset": "WikiNeural",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "n_samples": 15,
+      "tp": 0,
+      "fp": 0,
+      "fn": 20
+    },
+    {
+      "subset": "bc2gm",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "n_samples": 10,
+      "tp": 0,
+      "fp": 0,
+      "fn": 20
+    },
+    {
+      "subset": "bc4chemd",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "n_samples": 7,
+      "tp": 0,
+      "fp": 0,
+      "fn": 11
+    },
+    {
+      "subset": "bc5cdr",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "n_samples": 20,
+      "tp": 0,
+      "fp": 0,
+      "fn": 52
+    },
+    {
+      "subset": "mit-movie",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "n_samples": 20,
+      "tp": 0,
+      "fp": 0,
+      "fn": 37
+    },
+    {
+      "subset": "mit-restaurant",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "n_samples": 20,
+      "tp": 0,
+      "fp": 0,
+      "fn": 45
+    },
+    {
+      "subset": "ncbi",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "n_samples": 12,
+      "tp": 0,
+      "fp": 0,
+      "fn": 32
+    }
+  ]
+}

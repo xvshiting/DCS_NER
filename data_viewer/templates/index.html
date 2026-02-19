@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JSONL 数据查看器</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 1.1em;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .file-selector {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+        }
+
+        .file-selector label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: #333;
+            font-size: 1.1em;
+        }
+
+        .file-selector select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 1em;
+            background: white;
+            cursor: pointer;
+            transition: border-color 0.3s;
+        }
+
+        .file-selector select:hover {
+            border-color: #667eea;
+        }
+
+        .file-selector select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .file-info {
+            margin-top: 15px;
+            padding: 15px;
+            background: white;
+            border-radius: 6px;
+            display: none;
+        }
+
+        .file-info.active {
+            display: block;
+        }
+
+        .file-info-item {
+            display: inline-block;
+            margin-right: 20px;
+            color: #666;
+        }
+
+        .file-info-item strong {
+            color: #333;
+            margin-right: 5px;
+        }
+
+        .data-container {
+            margin-top: 30px;
+        }
+
+        .data-item {
+            background: #f8f9fa;
+            border-left: 4px solid #667eea;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 6px;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .data-item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        .data-item-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+
+        .line-number {
+            background: #667eea;
+            color: white;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 0.9em;
+        }
+
+        .data-section {
+            margin-bottom: 15px;
+        }
+
+        .data-section-title {
+            font-weight: 600;
+            color: #667eea;
+            margin-bottom: 8px;
+            font-size: 1.1em;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .data-section-title:hover {
+            color: #5568d3;
+        }
+
+        .toggle-icon {
+            font-size: 0.8em;
+            margin-left: 10px;
+            transition: transform 0.3s;
+        }
+
+        .data-section-content {
+            display: block;
+        }
+
+        .data-section-content.hidden {
+            display: none;
+        }
+
+        .description-item {
+            background: white;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 10px;
+            border-left: 3px solid #28a745;
+        }
+
+        .description-label {
+            font-weight: 600;
+            color: #28a745;
+            margin-bottom: 10px;
+            font-size: 1.05em;
+        }
+
+        .definition-item {
+            margin-bottom: 8px;
+            padding: 8px;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+
+        .definition-key {
+            font-weight: 600;
+            color: #667eea;
+            margin-right: 8px;
+        }
+
+        .definition-value {
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .sentence {
+            background: white;
+            padding: 15px;
+            border-radius: 6px;
+            line-height: 1.8;
+            color: #333;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .entities-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .entity-tag {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            display: inline-block;
+        }
+
+        .entity-tag .entity-name {
+            font-weight: 600;
+        }
+
+        .entity-tag .entity-type {
+            opacity: 0.9;
+            font-size: 0.85em;
+            margin-left: 8px;
+        }
+
+        .types-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .type-badge {
+            background: #e3f2fd;
+            color: #1976d2;
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 0.85em;
+        }
+
+        .json-view {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 15px;
+            border-radius: 6px;
+            overflow-x: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            margin-top: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+
+        .pagination button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1em;
+            transition: background 0.3s;
+        }
+
+        .pagination button:hover:not(:disabled) {
+            background: #5568d3;
+        }
+
+        .pagination button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .pagination input {
+            width: 60px;
+            padding: 10px;
+            text-align: center;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 1em;
+        }
+
+        .pagination .page-info {
+            color: #666;
+            font-weight: 600;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+            font-size: 1.2em;
+        }
+
+        .error {
+            background: #ffebee;
+            color: #c62828;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 20px 0;
+            border-left: 4px solid #c62828;
+        }
+
+        .empty {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+            font-size: 1.1em;
+        }
+
+        .per-page-selector {
+            margin-left: 20px;
+        }
+
+        .per-page-selector select {
+            padding: 8px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 0.9em;
+        }
+
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 JSONL 数据查看器</h1>
+            <p>方便地浏览和查看数据集中的 JSONL 文件</p>
+        </div>
+
+        <div class="content">
+            <div class="file-selector">
+                <label for="fileSelect">选择 JSONL 文件：</label>
+                <select id="fileSelect">
+                    <option value="">-- 请选择文件 --</option>
+                    {% for file in jsonl_files %}
+                    <option value="{{ file.name }}" data-size="{{ file.size }}">{{ file.name }}</option>
+                    {% endfor %}
+                </select>
+                <div class="file-info" id="fileInfo">
+                    <div class="file-info-item">
+                        <strong>总行数:</strong> <span id="totalLines">-</span>
+                    </div>
+                    <div class="file-info-item">
+                        <strong>文件大小:</strong> <span id="fileSize">-</span>
+                    </div>
+                </div>
+            </div>
+
+            <div id="dataContainer">
+                <div class="empty">请选择一个文件开始浏览数据</div>
+            </div>
+
+            <div class="pagination" id="pagination" style="display: none;">
+                <button id="firstPage">首页</button>
+                <button id="prevPage">上一页</button>
+                <span class="page-info">
+                    第 <input type="number" id="pageInput" min="1" value="1"> 页 / 共 <span id="totalPages">0</span> 页
+                </span>
+                <button id="nextPage">下一页</button>
+                <button id="lastPage">末页</button>
+                <div class="per-page-selector">
+                    <label>每页显示:</label>
+                    <select id="perPageSelect">
+                        <option value="5">5</option>
+                        <option value="10" selected>10</option>
+                        <option value="20">20</option>
+                        <option value="50">50</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentFile = '';
+        let currentPage = 1;
+        let perPage = 10;
+        let totalPages = 0;
+
+        const fileSelect = document.getElementById('fileSelect');
+        const fileInfo = document.getElementById('fileInfo');
+        const dataContainer = document.getElementById('dataContainer');
+        const pagination = document.getElementById('pagination');
+        const pageInput = document.getElementById('pageInput');
+        const totalPagesSpan = document.getElementById('totalPages');
+        const perPageSelect = document.getElementById('perPageSelect');
+
+        fileSelect.addEventListener('change', function() {
+            currentFile = this.value;
+            if (currentFile) {
+                loadFileInfo();
+                currentPage = 1;
+                loadData();
+            } else {
+                fileInfo.classList.remove('active');
+                dataContainer.innerHTML = '<div class="empty">请选择一个文件开始浏览数据</div>';
+                pagination.style.display = 'none';
+            }
+        });
+
+        perPageSelect.addEventListener('change', function() {
+            perPage = parseInt(this.value);
+            currentPage = 1;
+            loadData();
+        });
+
+        document.getElementById('firstPage').addEventListener('click', () => {
+            currentPage = 1;
+            loadData();
+        });
+
+        document.getElementById('prevPage').addEventListener('click', () => {
+            if (currentPage > 1) {
+                currentPage--;
+                loadData();
+            }
+        });
+
+        document.getElementById('nextPage').addEventListener('click', () => {
+            if (currentPage < totalPages) {
+                currentPage++;
+                loadData();
+            }
+        });
+
+        document.getElementById('lastPage').addEventListener('click', () => {
+            currentPage = totalPages;
+            loadData();
+        });
+
+        pageInput.addEventListener('change', function() {
+            const page = parseInt(this.value);
+            if (page >= 1 && page <= totalPages) {
+                currentPage = page;
+                loadData();
+            } else {
+                this.value = currentPage;
+            }
+        });
+
+        function loadFileInfo() {
+            fetch(`/api/file_info?file=${encodeURIComponent(currentFile)}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        console.error(data.error);
+                        return;
+                    }
+                    document.getElementById('totalLines').textContent = data.total_lines.toLocaleString();
+                    document.getElementById('fileSize').textContent = `${data.file_size_mb} MB`;
+                    fileInfo.classList.add('active');
+                })
+                .catch(error => {
+                    console.error('加载文件信息失败:', error);
+                });
+        }
+
+        function loadData() {
+            if (!currentFile) return;
+
+            dataContainer.innerHTML = '<div class="loading">加载中...</div>';
+            pagination.style.display = 'none';
+
+            fetch(`/api/data?file=${encodeURIComponent(currentFile)}&page=${currentPage}&per_page=${perPage}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        dataContainer.innerHTML = `<div class="error">错误: ${data.error}</div>`;
+                        return;
+                    }
+
+                    totalPages = data.total_pages;
+                    totalPagesSpan.textContent = totalPages;
+                    pageInput.value = currentPage;
+                    pageInput.max = totalPages;
+
+                    updatePaginationButtons();
+
+                    if (data.data.length === 0) {
+                        dataContainer.innerHTML = '<div class="empty">没有数据</div>';
+                        pagination.style.display = 'none';
+                        return;
+                    }
+
+                    renderData(data.data);
+                    pagination.style.display = 'flex';
+                })
+                .catch(error => {
+                    dataContainer.innerHTML = `<div class="error">加载失败: ${error.message}</div>`;
+                });
+        }
+
+        function updatePaginationButtons() {
+            document.getElementById('firstPage').disabled = currentPage === 1;
+            document.getElementById('prevPage').disabled = currentPage === 1;
+            document.getElementById('nextPage').disabled = currentPage === totalPages;
+            document.getElementById('lastPage').disabled = currentPage === totalPages;
+        }
+
+        function renderData(data) {
+            let html = '';
+            data.forEach((item, itemIndex) => {
+                html += `
+                    <div class="data-item">
+                        <div class="data-item-header">
+                            <span class="line-number">行号: ${item._line_number}</span>
+                        </div>
+                        <div class="data-section">
+                            <div class="data-section-title" onclick="toggleSection(this)">
+                                <span>📝 文本内容</span>
+                                <span class="toggle-icon">▼</span>
+                            </div>
+                            <div class="data-section-content">
+                                <div class="sentence">${escapeHtml(item.sentence || '')}</div>
+                            </div>
+                        </div>
+                        ${item.entities && item.entities.length > 0 ? `
+                        <div class="data-section">
+                            <div class="data-section-title" onclick="toggleSection(this)">
+                                <span>🏷️ 实体 (${item.entities.length})</span>
+                                <span class="toggle-icon">▼</span>
+                            </div>
+                            <div class="data-section-content">
+                                <div class="entities-list">
+                                    ${item.entities.map(entity => `
+                                        <span class="entity-tag">
+                                            <span class="entity-name">${escapeHtml(entity.name)}</span>
+                                            <span class="entity-type">[${escapeHtml(entity.type)}]</span>
+                                        </span>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        </div>
+                        ` : ''}
+                        ${item.types && item.types.length > 0 ? `
+                        <div class="data-section">
+                            <div class="data-section-title" onclick="toggleSection(this)">
+                                <span>📋 类型</span>
+                                <span class="toggle-icon">▼</span>
+                            </div>
+                            <div class="data-section-content">
+                                <div class="types-list">
+                                    ${item.types.map(type => `
+                                        <span class="type-badge">${escapeHtml(type)}</span>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        </div>
+                        ` : ''}
+                        ${item.dataset ? `
+                        <div class="data-section">
+                            <div class="data-section-title" onclick="toggleSection(this)">
+                                <span>📦 数据集</span>
+                                <span class="toggle-icon">▼</span>
+                            </div>
+                            <div class="data-section-content">
+                                <div>${escapeHtml(item.dataset)}</div>
+                            </div>
+                        </div>
+                        ` : ''}
+                        ${item.description && item.description.length > 0 ? `
+                        <div class="data-section">
+                            <div class="data-section-title" onclick="toggleSection(this)">
+                                <span>📚 描述定义 (${item.description.length})</span>
+                                <span class="toggle-icon">▼</span>
+                            </div>
+                            <div class="data-section-content">
+                                ${item.description.map(desc => `
+                                    <div class="description-item">
+                                        <div class="description-label">标签: ${escapeHtml(desc.label)}</div>
+                                        ${Object.keys(desc.definitions || {}).map(key => `
+                                            <div class="definition-item">
+                                                <span class="definition-key">${escapeHtml(key)}:</span>
+                                                <span class="definition-value">${escapeHtml(desc.definitions[key])}</span>
+                                            </div>
+                                        `).join('')}
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                        ` : ''}
+                        <div class="data-section">
+                            <div class="data-section-title" onclick="toggleSection(this)">
+                                <span>🔧 完整JSON</span>
+                                <span class="toggle-icon">▶</span>
+                            </div>
+                            <div class="data-section-content hidden">
+                                <div class="json-view">${formatJSON(item)}</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            dataContainer.innerHTML = html;
+        }
+
+        function toggleSection(titleElement) {
+            const content = titleElement.nextElementSibling;
+            const icon = titleElement.querySelector('.toggle-icon');
+            
+            if (content.classList.contains('hidden')) {
+                content.classList.remove('hidden');
+                icon.textContent = '▼';
+                icon.style.transform = 'rotate(0deg)';
+            } else {
+                content.classList.add('hidden');
+                icon.textContent = '▶';
+                icon.style.transform = 'rotate(-90deg)';
+            }
+        }
+
+
+        function formatJSON(obj) {
+            return JSON.stringify(obj, null, 2)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>
