@@ -53,7 +53,7 @@ class EvalConfig:
     # GLiNER model
     gliner_ckpt: str = "checkpoints/best/checkpoint.pt"
     backbone: str = "/data/model_hub/mdeberta-v3-base"
-    model_arch: str = "deberta_span"
+    model_arch: str = "deberta_span_v1"   # deberta_span_v1 | deberta_span_v2
     max_span_width: int = 12
     label_chunk_size: int = 16
     threshold: float = 0.5
@@ -87,7 +87,8 @@ def parse_args() -> EvalConfig:
 
     parser.add_argument("--gliner_ckpt", default=cfg.gliner_ckpt)
     parser.add_argument("--backbone", default=cfg.backbone)
-    parser.add_argument("--model_arch", default=cfg.model_arch)
+    parser.add_argument("--model_arch", default=cfg.model_arch,
+                        choices=["deberta_span_v1", "deberta_span_v2"])
     parser.add_argument("--max_span_width", type=int, default=cfg.max_span_width)
     parser.add_argument("--label_chunk_size", type=int, default=cfg.label_chunk_size)
     parser.add_argument("--threshold", type=float, default=cfg.threshold)
@@ -331,8 +332,7 @@ class SubsetMetrics:
 
 def load_gliner(cfg: EvalConfig, device: torch.device) -> nn.Module:
     """Load a trained GLiNER checkpoint."""
-    # Import here to allow registry to be populated
-    from train import MODEL_REGISTRY, build_model, TrainConfig
+    from train import build_model, TrainConfig
 
     ckpt = torch.load(cfg.gliner_ckpt, map_location="cpu")
     saved_cfg_dict = ckpt.get("config", {})
