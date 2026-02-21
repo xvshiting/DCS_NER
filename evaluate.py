@@ -53,7 +53,7 @@ class EvalConfig:
     # GLiNER model
     gliner_ckpt: str = "checkpoints/best/checkpoint.pt"
     backbone: str = "/data/model_hub/mdeberta-v3-base"
-    model_arch: str = "deberta_span_v1"   # deberta_span_v1 | deberta_span_v2
+    model_arch: str = "deberta_span_v1"   # deberta_span_v1 | deberta_span_v2 | deberta_span_v3
     max_span_width: int = 12
     label_chunk_size: int = 16
     threshold: float = 0.5
@@ -88,7 +88,7 @@ def parse_args() -> EvalConfig:
     parser.add_argument("--gliner_ckpt", default=cfg.gliner_ckpt)
     parser.add_argument("--backbone", default=cfg.backbone)
     parser.add_argument("--model_arch", default=cfg.model_arch,
-                        choices=["deberta_span_v1", "deberta_span_v2"])
+                        choices=["deberta_span_v1", "deberta_span_v2", "deberta_span_v3"])
     parser.add_argument("--max_span_width", type=int, default=cfg.max_span_width)
     parser.add_argument("--label_chunk_size", type=int, default=cfg.label_chunk_size)
     parser.add_argument("--threshold", type=float, default=cfg.threshold)

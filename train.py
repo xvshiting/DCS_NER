@@ -8,7 +8,7 @@ Key options:
     --data_dir        Directory containing description JSONL files
     --backbone        Path or name of mDeBERTa backbone
     --output_dir      Where to save checkpoints
-    --model_arch      deberta_span_v1 | deberta_span_v2  (default: deberta_span_v1)
+    --model_arch      deberta_span_v1 | deberta_span_v2 | deberta_span_v3  (default: deberta_span_v1)
     --epochs          Number of training epochs
     --batch_size      Per-GPU batch size
     --grad_accum      Gradient accumulation steps
@@ -45,6 +45,7 @@ from ldggliner.data_processor import NERSpanDataset, build_collate_fn
 from ldggliner.model import (
     DebertaSchemaSpanModel,
     DebertaSchemaSpanModelV2,
+    DebertaSchemaSpanModelV3,
     SpanBatch,
 )
 
@@ -67,14 +68,14 @@ class TrainConfig:
     max_total_labels: int = 20        # budget cap on labels per sample (pos + neg)
 
     # Model
-    model_arch: str = "deberta_span_v1"   # deberta_span_v1 | deberta_span_v2
+    model_arch: str = "deberta_span_v1"   # deberta_span_v1 | deberta_span_v2 | deberta_span_v3
     backbone: str = "/data/model_hub/mdeberta-v3-base"
     share_encoders: bool = True
     use_width_embedding: bool = True
     num_heads: int = 8
     dropout: float = 0.1
     label_chunk_size: int = 16
-    num_fusion_stacks: int = 2        # only used by deberta_span_v2
+    num_fusion_stacks: int = 2        # only used by deberta_span_v2 / deberta_span_v3
 
     # Training
     output_dir: str = "checkpoints"
@@ -105,7 +106,7 @@ def parse_args() -> TrainConfig:
     parser.add_argument("--max_span_width", type=int, default=cfg.max_span_width)
     parser.add_argument("--max_total_labels", type=int, default=cfg.max_total_labels)
     parser.add_argument("--model_arch", default=cfg.model_arch,
-                        choices=["deberta_span_v1", "deberta_span_v2"])
+                        choices=["deberta_span_v1", "deberta_span_v2", "deberta_span_v3"])
     parser.add_argument("--backbone", default=cfg.backbone)
     parser.add_argument("--share_encoders", action="store_true", default=cfg.share_encoders)
     parser.add_argument("--no_share_encoders", dest="share_encoders", action="store_false")
@@ -148,6 +149,8 @@ def build_model(cfg: TrainConfig) -> nn.Module:
     )
     if cfg.model_arch == "deberta_span_v2":
         return DebertaSchemaSpanModelV2(**common, num_fusion_stacks=cfg.num_fusion_stacks)
+    if cfg.model_arch == "deberta_span_v3":
+        return DebertaSchemaSpanModelV3(**common, num_fusion_stacks=cfg.num_fusion_stacks)
     return DebertaSchemaSpanModel(**common)
 
 

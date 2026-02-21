@@ -137,6 +137,37 @@ class FusionStack(nn.Module):
         return q, h
 
 
+class LabelOnlyFusionStack(nn.Module):
+    """
+    V3 fusion stack: only the label representation Q is updated.
+    H (text tokens) is never modified, so span representations are
+    built from the original encoder output.
+
+    Each stack applies:
+      1. Label->Text  cross-attention  (Q attends to H)
+      2. Label->Label self-attention   (Q' attends to Q')
+
+    The Text->Label cross-attention step from V2 is intentionally omitted.
+
+    Input:  Q (B, M, d), H (B, N, d)
+    Output: Q'' (B, M, d)   [H is returned unchanged]
+    """
+    def __init__(self, d_model: int, num_heads: int = 8, dropout: float = 0.1):
+        super().__init__()
+        self.label_to_text = CrossAttentionFusion(d_model=d_model, num_heads=num_heads, dropout=dropout)
+        self.label_self    = LabelSelfAttention(d_model=d_model, num_heads=num_heads, dropout=dropout)
+
+    def forward(
+        self,
+        q: torch.Tensor,
+        h: torch.Tensor,
+        h_key_padding_mask: Optional[torch.BoolTensor] = None,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        q = self.label_to_text(q, h, h_key_padding_mask=h_key_padding_mask)  # (B, M, d)
+        q = self.label_self(q)                                                 # (B, M, d)
+        return q, h  # H is returned as-is
+
+
 class SpanEnumerator:
     """Enumerate all spans up to max_width for each sequence length N (excluding pads by attention mask later)."""
     def __init__(self, max_width: int):
@@ -474,6 +505,149 @@ class DebertaSchemaSpanModelV2(nn.Module):
         span_vec = self.span_ffn(span_in)
 
         # 5) Score spans against labels
+        logits = torch.einsum("bsd,bmd->bsm", span_vec, Q) + self.label_bias
+
+        # 6) Span validity mask
+        attn      = batch.text_attention_mask.bool()
+        span_mask = attn.index_select(dim=1, index=start_idx) & \
+                    attn.index_select(dim=1, index=end_idx)
+
+        out: Dict[str, torch.Tensor] = {
+            "logits": logits, "span_mask": span_mask,
+            "start_idx": start_idx, "end_idx": end_idx, "width": width,
+        }
+
+        # 7) Optional loss
+        if batch.span_targets is not None:
+            out["loss"] = span_loss(
+                logits, batch.span_targets, span_mask,
+                use_pos_weight=self.use_pos_weight,
+                pos_weight_cap=self.pos_weight_cap,
+            )
+
+        return out
+
+
+class DebertaSchemaSpanModelV3(nn.Module):
+    """
+    V3: label-only fusion.
+
+    Each LabelOnlyFusionStack applies:
+      1. Label->Text  cross-attention  (Q reads from H)
+      2. Label->Label self-attention   (Q attends to itself)
+
+    H is never modified during fusion, so span representations are built
+    from the original (backbone) text encoding — identical to V1 in that
+    regard, but Q benefits from multiple rounds of label-aware updating.
+
+    Compared to V2 this removes the Text->Label step, which keeps text
+    representations clean and reduces the risk that label noise corrupts
+    the span scoring basis.
+    """
+    def __init__(
+        self,
+        backbone_name: str = "microsoft/mdeberta-v3-base",
+        share_encoders: bool = True,
+        use_width_embedding: bool = True,
+        max_span_width: int = 12,
+        num_heads: int = 8,
+        dropout: float = 0.1,
+        label_chunk_size: int = 16,
+        num_fusion_stacks: int = 2,
+        use_pos_weight: bool = False,
+        pos_weight_cap: float = 200.0,
+    ):
+        super().__init__()
+        self.text_encoder = AutoModel.from_pretrained(backbone_name)
+        if share_encoders:
+            self.label_encoder = self.text_encoder
+        else:
+            self.label_encoder = AutoModel.from_pretrained(backbone_name)
+
+        d_model = self.text_encoder.config.hidden_size
+        self.d_model = d_model
+        self.max_span_width = int(max_span_width)
+        self.span_enum = SpanEnumerator(max_width=max_span_width)
+        self.label_chunk_size = int(label_chunk_size)
+        self.use_pos_weight = bool(use_pos_weight)
+        self.pos_weight_cap = float(pos_weight_cap)
+
+        self.fusion_stacks = nn.ModuleList([
+            LabelOnlyFusionStack(d_model=d_model, num_heads=num_heads, dropout=dropout)
+            for _ in range(num_fusion_stacks)
+        ])
+
+        self.use_width_embedding = bool(use_width_embedding)
+        if self.use_width_embedding:
+            self.width_emb = nn.Embedding(max_span_width, d_model)
+            span_in = d_model * 2 + d_model
+        else:
+            span_in = d_model * 2
+
+        self.span_ffn = make_mlp(span_in, hidden_dim=d_model * 4, output_dim=d_model, dropout=dropout)
+        self.label_bias = nn.Parameter(torch.zeros(1))
+
+    @staticmethod
+    def _pool_cls(last_hidden_state: torch.Tensor) -> torch.Tensor:
+        return last_hidden_state[:, 0, :]
+
+    def encode_text(self, input_ids: torch.LongTensor, attention_mask: torch.LongTensor) -> torch.Tensor:
+        out = self.text_encoder(input_ids=input_ids, attention_mask=attention_mask)
+        return out.last_hidden_state  # (B, N, d)
+
+    def encode_labels(
+        self,
+        input_ids: torch.LongTensor,
+        attention_mask: torch.LongTensor,
+        batch_size: int,
+        num_labels: int,
+    ) -> torch.Tensor:
+        total = input_ids.size(0)
+        pooled_chunks = []
+        for start in range(0, total, self.label_chunk_size):
+            end = min(start + self.label_chunk_size, total)
+            chunk_out = self.label_encoder(
+                input_ids=input_ids[start:end],
+                attention_mask=attention_mask[start:end],
+            )
+            pooled_chunks.append(self._pool_cls(chunk_out.last_hidden_state))
+        pooled = torch.cat(pooled_chunks, dim=0)       # (B*M, d)
+        return pooled.view(batch_size, num_labels, -1)  # (B, M, d)
+
+    def forward(self, batch: SpanBatch) -> Dict[str, torch.Tensor]:
+        B, N = batch.text_input_ids.shape
+        M = int(batch.num_labels)
+        device = batch.text_input_ids.device
+
+        # 1) Encode text and labels
+        H = self.encode_text(batch.text_input_ids, batch.text_attention_mask)   # (B, N, d)
+        Q = self.encode_labels(batch.label_input_ids, batch.label_attention_mask,
+                               batch_size=B, num_labels=M)                       # (B, M, d)
+
+        # 2) Apply label-only fusion stacks: only Q is updated, H stays fixed
+        pad_mask = batch.text_attention_mask == 0  # (B, N) True for PAD
+        for stack in self.fusion_stacks:
+            Q, H = stack(Q, H, h_key_padding_mask=pad_mask)
+        # Q: (B, M, d) fused label reps
+        # H: (B, N, d) original text reps (unchanged throughout fusion)
+
+        # 3) Enumerate spans
+        start_idx, end_idx, width = self.span_enum.enumerate(seq_len=N, device=device)
+        S = start_idx.numel()
+
+        # 4) Build span reps from original H
+        H_start = H.index_select(dim=1, index=start_idx)
+        H_end   = H.index_select(dim=1, index=end_idx)
+
+        if self.use_width_embedding:
+            W = self.width_emb(width).unsqueeze(0).expand(B, S, self.d_model)
+            span_in = torch.cat([H_start, H_end, W], dim=-1)
+        else:
+            span_in = torch.cat([H_start, H_end], dim=-1)
+
+        span_vec = self.span_ffn(span_in)
+
+        # 5) Score spans against fused label reps
         logits = torch.einsum("bsd,bmd->bsm", span_vec, Q) + self.label_bias
 
         # 6) Span validity mask
