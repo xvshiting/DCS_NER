@@ -76,6 +76,7 @@ class TrainConfig:
     dropout: float = 0.1
     label_chunk_size: int = 16
     num_fusion_stacks: int = 2        # only used by deberta_span_v2 / deberta_span_v3
+    ffn_ratio: int = 4                # FFN hidden dim multiplier in fusion blocks
 
     # Training
     output_dir: str = "checkpoints"
@@ -116,6 +117,7 @@ def parse_args() -> TrainConfig:
     parser.add_argument("--dropout", type=float, default=cfg.dropout)
     parser.add_argument("--label_chunk_size", type=int, default=cfg.label_chunk_size)
     parser.add_argument("--num_fusion_stacks", type=int, default=cfg.num_fusion_stacks)
+    parser.add_argument("--ffn_ratio", type=int, default=cfg.ffn_ratio)
     parser.add_argument("--output_dir", default=cfg.output_dir)
     parser.add_argument("--epochs", type=int, default=cfg.epochs)
     parser.add_argument("--batch_size", type=int, default=cfg.batch_size)
@@ -145,6 +147,7 @@ def build_model(cfg: TrainConfig) -> nn.Module:
         max_span_width=cfg.max_span_width,
         num_heads=cfg.num_heads,
         dropout=cfg.dropout,
+        ffn_ratio=cfg.ffn_ratio,
         label_chunk_size=cfg.label_chunk_size,
     )
     if cfg.model_arch == "deberta_span_v2":
