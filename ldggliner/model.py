@@ -154,7 +154,10 @@ class SpanEnumerator:
         ends = []
         widths = []
         for w in range(1, self.max_width + 1):
-            s = torch.arange(0, seq_len - w + 1, device=device, dtype=torch.long)
+            num_spans = seq_len - w + 1
+            if num_spans <= 0:
+                break  # seq shorter than span width; no valid spans for this width or wider
+            s = torch.arange(0, num_spans, device=device, dtype=torch.long)
             e = s + (w - 1)
             starts.append(s)
             ends.append(e)

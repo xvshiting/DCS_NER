@@ -63,11 +63,12 @@ Do not add extra text or blank lines."""
 class Config:
     test_data: str = "/data/dataset/ner/instruct_uie_ner"
     llm_base: str = "/data/model_hub/qwen/Qwen3-1.7B"
-    llm_adapter: Optional[str] = None
-    llm_max_new_tokens: int = 512
+    llm_adapter: Optional[str] = "/home/will/Projects/LLaMA-Factory/saves/Qwen3-1.7B-Thinking/lora/train_2026-02-09-12-46-24"
+    llm_max_new_tokens: int = 4096
     output: str = "descriptions_cache.jsonl"
     split: str = "test"
     max_samples: Optional[int] = None   # limit for debugging
+    verbose: int = 0                    # print raw LLM output for first N samples
 
 
 def parse_args() -> Config:
@@ -79,11 +80,16 @@ def parse_args() -> Config:
     p.add_argument("--output", default=Config.output)
     p.add_argument("--split", default=Config.split)
     p.add_argument("--max_samples", type=int, default=None)
+    p.add_argument("--verbose", type=int, default=0,
+                   help="Print raw LLM output for first N samples (for debugging)")
     args = p.parse_args()
     return Config(**vars(args))
 
 
 def _parse_llm_output(text: str) -> Dict[str, str]:
+    # Strip <think>...</think> blocks (Qwen3 thinking model)
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+
     result = {}
     for line in text.strip().splitlines():
         line = line.strip()
