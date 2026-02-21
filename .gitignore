@@ -38,5 +38,5 @@ wandb/
 .env.development.local
 .env.test.local
 .env.production.local
-eval_results 
+eval_results/ 
 descriptions_cache.jsonl
