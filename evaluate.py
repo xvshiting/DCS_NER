@@ -60,6 +60,7 @@ class EvalConfig:
 
     # Test data
     test_data: str = "/data/dataset/ner/instruct_uie_ner"
+    subsets: Optional[List[str]] = None            # None = run all subsets
     max_samples_per_subset: Optional[int] = None   # None = use all
     batch_size: int = 8
 
@@ -94,6 +95,9 @@ def parse_args() -> EvalConfig:
     parser.add_argument("--threshold", type=float, default=cfg.threshold)
 
     parser.add_argument("--test_data", default=cfg.test_data)
+    parser.add_argument("--subsets", nargs="+", default=None,
+                        metavar="SUBSET",
+                        help="Subset name(s) to evaluate; default runs all subsets")
     parser.add_argument("--max_samples_per_subset", type=int, default=cfg.max_samples_per_subset)
     parser.add_argument("--batch_size", type=int, default=cfg.batch_size)
 
@@ -551,7 +555,15 @@ def run_evaluation(cfg: EvalConfig):
         subset_indices[sample["dataset"]].append(i)
 
     subsets = sorted(subset_indices.keys())
-    logger.info(f"Subsets ({len(subsets)}): {subsets}")
+    logger.info(f"Available subsets ({len(subsets)}): {subsets}")
+
+    # Filter to requested subsets (if specified)
+    if cfg.subsets:
+        unknown = set(cfg.subsets) - set(subsets)
+        if unknown:
+            logger.warning(f"Requested subsets not found in data (ignored): {sorted(unknown)}")
+        subsets = [s for s in subsets if s in cfg.subsets]
+        logger.info(f"Evaluating subsets ({len(subsets)}): {subsets}")
 
     # Apply per-subset cap
     if cfg.max_samples_per_subset:
