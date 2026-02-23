@@ -55,11 +55,18 @@ _amp_dtype = None
 # Core inference (accepts descriptions dict directly)
 # ---------------------------------------------------------------------------
 
-def _run_gliner(text: str, labels: list, descriptions: dict, threshold: float) -> list:
+def _run_gliner(
+    text: str,
+    labels: list,
+    descriptions: dict,
+    threshold: float,
+    flat_ner: bool = True,
+    multi_label: bool = False,
+) -> list:
     """
     Run GLiNER on one text sample.
     descriptions: {label: desc_str}  — empty string means label-only.
-    Returns list of {"text", "start", "end", "label"} dicts.
+    Returns list of {"text", "start", "end", "label", "score"} dicts sorted by start.
     """
     label_descs = {l: descriptions.get(l, "") for l in labels}
 
@@ -93,6 +100,8 @@ def _run_gliner(text: str, labels: list, descriptions: dict, threshold: float) -
         offset_mappings=offset_mappings,
         label_lists=[enc["labels"]],
         threshold=threshold,
+        flat_ner=flat_ner,
+        multi_label=multi_label,
     )
 
     return [
@@ -116,6 +125,8 @@ def info():
         "model_arch": _cfg.model_arch,
         "backbone": os.path.basename(_cfg.backbone),
         "threshold": _cfg.threshold,
+        "flat_ner": _cfg.flat_ner,
+        "multi_label": _cfg.multi_label,
         "device": str(_device),
         "available_modes": _available_modes,
     })
@@ -153,8 +164,10 @@ def describe():
 def predict():
     """Run NER with caller-supplied descriptions (may be user-edited).
 
-    Request JSON: {text, labels, descriptions, threshold}
+    Request JSON: {text, labels, descriptions, threshold, flat_ner, multi_label}
       descriptions: {label: desc_str}  — optional, defaults to empty strings
+      flat_ner:     bool — greedy NMS to suppress overlapping spans (default: server cfg)
+      multi_label:  bool — global NMS across labels vs per-label NMS (default: server cfg)
     Response JSON: {entities: [{text, start, end, label}, ...]}
     """
     data = request.get_json(force=True, silent=True) or {}
@@ -162,6 +175,8 @@ def predict():
     labels = [l.strip() for l in data.get("labels", []) if isinstance(l, str) and l.strip()]
     descriptions = data.get("descriptions") or {}
     threshold = float(data.get("threshold", _cfg.threshold))
+    flat_ner = bool(data.get("flat_ner", _cfg.flat_ner))
+    multi_label = bool(data.get("multi_label", _cfg.multi_label))
 
     if not text:
         return jsonify({"error": "text is required"}), 400
@@ -169,7 +184,7 @@ def predict():
         return jsonify({"error": "at least one entity type label is required"}), 400
 
     try:
-        entities = _run_gliner(text, labels, descriptions, threshold)
+        entities = _run_gliner(text, labels, descriptions, threshold, flat_ner, multi_label)
         return jsonify({"entities": entities})
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
@@ -244,6 +259,10 @@ def main():
     parser.add_argument("--max_span_width", type=int, default=12)
     parser.add_argument("--label_chunk_size", type=int, default=16)
     parser.add_argument("--threshold", type=float, default=0.5)
+    parser.add_argument("--flat_ner", action=argparse.BooleanOptionalAction, default=True,
+                        help="Greedy NMS: suppress overlapping spans (default: on)")
+    parser.add_argument("--multi_label", action=argparse.BooleanOptionalAction, default=False,
+                        help="When flat_ner: True=global NMS, False=per-label NMS (default: off)")
     parser.add_argument("--max_text_len", type=int, default=256)
     parser.add_argument("--max_label_len", type=int, default=128)
     # Description cache
@@ -271,6 +290,8 @@ def main():
         max_span_width=args.max_span_width,
         label_chunk_size=args.label_chunk_size,
         threshold=args.threshold,
+        flat_ner=args.flat_ner,
+        multi_label=args.multi_label,
         max_text_len=args.max_text_len,
         max_label_len=args.max_label_len,
         desc_mode="none",
