@@ -76,6 +76,8 @@ def predict(
         offset_mappings=offset_mappings,
         label_lists=[enc["labels"]],
         threshold=threshold,
+        flat_ner=cfg.flat_ner,
+        multi_label=cfg.multi_label,
     )
     return sorted(pred_sets[0])
 

@@ -57,6 +57,8 @@ class EvalConfig:
     max_span_width: int = 12
     label_chunk_size: int = 16
     threshold: float = 0.5
+    flat_ner: bool = True        # greedy NMS to suppress overlapping spans
+    multi_label: bool = False    # True=global NMS across labels; False=per-label NMS
 
     # Test data
     test_data: str = "/data/dataset/ner/instruct_uie_ner"
@@ -93,6 +95,12 @@ def parse_args() -> EvalConfig:
     parser.add_argument("--max_span_width", type=int, default=cfg.max_span_width)
     parser.add_argument("--label_chunk_size", type=int, default=cfg.label_chunk_size)
     parser.add_argument("--threshold", type=float, default=cfg.threshold)
+    parser.add_argument("--flat_ner", action=argparse.BooleanOptionalAction,
+                        default=cfg.flat_ner,
+                        help="Greedy NMS decoding: suppress overlapping spans (default: on)")
+    parser.add_argument("--multi_label", action=argparse.BooleanOptionalAction,
+                        default=cfg.multi_label,
+                        help="When flat_ner: True=global NMS, False=per-label NMS (default: off)")
 
     parser.add_argument("--test_data", default=cfg.test_data)
     parser.add_argument("--subsets", nargs="+", default=None,
@@ -509,10 +517,29 @@ def decode_predictions(
     offset_mappings: List[List[Tuple[int, int]]],
     label_lists: List[List[str]],
     threshold: float,
+    flat_ner: bool = True,
+    multi_label: bool = False,
 ) -> List[Set[Tuple[int, int, str]]]:
     """
-    Decode model outputs into sets of (char_start, char_end, label) predictions.
-    Returns one set per sample in the batch.
+    Decode model outputs into (char_start, char_end, label) sets.
+
+    flat_ner=True (default):
+        Greedy NMS — sort candidates by prob descending, greedily select each span
+        only if its token range does not overlap with any already-selected span.
+        Eliminates sub-span / overlapping false positives; standard GLiNER behaviour.
+
+    flat_ner=False:
+        No NMS — return every (span, label) pair whose sigmoid > threshold directly.
+        High recall but typically very low precision due to overlapping sub-spans.
+
+    multi_label (only active when flat_ner=True):
+        False (default) — NMS applied per-label independently.  A token position can
+                          be occupied by at most one span per label, but different
+                          labels may share the same token position (e.g. one span can
+                          be both PERSON and ORG).
+        True            — Global NMS across all labels.  Once a token is occupied by
+                          any span+label, no other span may cover it regardless of
+                          label (strict flat-NER assumption).
     """
     probs = torch.sigmoid(logits)   # (B, S, M)
     results = []
@@ -523,22 +550,50 @@ def decode_predictions(
         M_b = len(labels)
         preds: Set[Tuple[int, int, str]] = set()
 
-        # Indices of valid spans for this sample
-        valid_s = span_mask[b].nonzero(as_tuple=False).squeeze(-1)  # variable length
+        valid_s = span_mask[b].nonzero(as_tuple=False).squeeze(-1)
 
+        # Collect all (prob, tok_s, tok_e, cs, ce, label) above threshold
+        candidates = []
         for s_idx in valid_s.tolist():
+            tok_s = int(start_idx[s_idx])
+            tok_e = int(end_idx[s_idx])
+            if tok_e >= len(offset_map):
+                continue
+            cs, _ = offset_map[tok_s]
+            _, ce = offset_map[tok_e]
+            if cs >= ce:
+                continue
             for m in range(M_b):
-                if probs[b, s_idx, m].item() > threshold:
-                    tok_s = int(start_idx[s_idx])
-                    tok_e = int(end_idx[s_idx])
-                    # Guard against out-of-range (truncated text)
-                    if tok_e >= len(offset_map):
+                p = probs[b, s_idx, m].item()
+                if p > threshold:
+                    candidates.append((p, tok_s, tok_e, cs, ce, labels[m]))
+
+        if not flat_ner:
+            # No NMS: return every candidate directly
+            preds = {(cs, ce, lbl) for _, _, _, cs, ce, lbl in candidates}
+        else:
+            # Greedy NMS by decreasing probability
+            candidates.sort(key=lambda x: -x[0])
+            if multi_label:
+                # Global NMS: one entity per token position across all labels
+                occupied: Set[int] = set()
+                for prob, tok_s, tok_e, cs, ce, lbl in candidates:
+                    tok_range = set(range(tok_s, tok_e + 1))
+                    if tok_range & occupied:
                         continue
-                    cs, _ = offset_map[tok_s]
-                    _, ce = offset_map[tok_e]
-                    if cs >= ce:
+                    occupied |= tok_range
+                    preds.add((cs, ce, lbl))
+            else:
+                # Per-label NMS: each label has its own independent occupied set
+                occupied_per_label: Dict[str, Set[int]] = {}
+                for prob, tok_s, tok_e, cs, ce, lbl in candidates:
+                    occ = occupied_per_label.setdefault(lbl, set())
+                    tok_range = set(range(tok_s, tok_e + 1))
+                    if tok_range & occ:
                         continue
-                    preds.add((cs, ce, labels[m]))
+                    occ |= tok_range
+                    preds.add((cs, ce, lbl))
+
         results.append(preds)
 
     return results
@@ -704,6 +759,8 @@ def run_evaluation(cfg: EvalConfig):
                 offset_mappings=offset_mappings,
                 label_lists=label_lists,
                 threshold=cfg.threshold,
+                flat_ner=cfg.flat_ner,
+                multi_label=cfg.multi_label,
             )
 
             # Update metrics
