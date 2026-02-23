@@ -64,15 +64,23 @@ def _make_ffn(d_model: int, ffn_ratio: int, dropout: float) -> nn.Sequential:
 class CrossAttentionFusion(nn.Module):
     """Label->Text cross-attention. Q attends to H.
 
-    Full Transformer block: attention sublayer + FFN sublayer, each with
-    residual connection and LayerNorm.
+    use_ffn=True  (default): full Transformer block — attention + FFN, two LayerNorms
+                             parameter names: ln1, ffn, ln2
+    use_ffn=False (legacy):  attention + single LayerNorm only
+                             parameter names: ln
+    The two naming schemes let us load checkpoints from before "add ffn" (run1-6).
     """
-    def __init__(self, d_model: int, num_heads: int = 8, dropout: float = 0.1, ffn_ratio: int = 4):
+    def __init__(self, d_model: int, num_heads: int = 8, dropout: float = 0.1,
+                 ffn_ratio: int = 4, use_ffn: bool = True):
         super().__init__()
         self.attn = nn.MultiheadAttention(embed_dim=d_model, num_heads=num_heads, dropout=dropout, batch_first=True)
-        self.ln1 = nn.LayerNorm(d_model)
-        self.ffn = _make_ffn(d_model, ffn_ratio, dropout)
-        self.ln2 = nn.LayerNorm(d_model)
+        self.use_ffn = use_ffn
+        if use_ffn:
+            self.ln1 = nn.LayerNorm(d_model)
+            self.ffn = _make_ffn(d_model, ffn_ratio, dropout)
+            self.ln2 = nn.LayerNorm(d_model)
+        else:
+            self.ln = nn.LayerNorm(d_model)
 
     def forward(self, q: torch.Tensor, h: torch.Tensor, h_key_padding_mask: Optional[torch.BoolTensor] = None) -> torch.Tensor:
         """
@@ -81,57 +89,68 @@ class CrossAttentionFusion(nn.Module):
         h_key_padding_mask: (B, N) True for PAD (to mask out)
         """
         ctx, _ = self.attn(query=q, key=h, value=h, key_padding_mask=h_key_padding_mask, need_weights=False)
-        q = self.ln1(q + ctx)
-        return self.ln2(q + self.ffn(q))
+        if self.use_ffn:
+            q = self.ln1(q + ctx)
+            return self.ln2(q + self.ffn(q))
+        else:
+            return self.ln(q + ctx)
 
 
 class LabelSelfAttention(nn.Module):
     """Label->Label self-attention. Labels attend to each other.
 
-    Full Transformer block: attention sublayer + FFN sublayer, each with
-    residual connection and LayerNorm.
-
-    Attention out_proj and FFN last linear are zero-initialized so that at
-    init this module is an identity (residual = 0), matching the V1 starting point.
+    use_ffn=True  (default): full Transformer block, parameter names: ln1, ffn, ln2
+    use_ffn=False (legacy):  attention + single LayerNorm, parameter name: ln
+    Zero-init keeps this module as identity at startup.
     """
-    def __init__(self, d_model: int, num_heads: int = 8, dropout: float = 0.1, ffn_ratio: int = 4):
+    def __init__(self, d_model: int, num_heads: int = 8, dropout: float = 0.1,
+                 ffn_ratio: int = 4, use_ffn: bool = True):
         super().__init__()
         self.attn = nn.MultiheadAttention(embed_dim=d_model, num_heads=num_heads, dropout=dropout, batch_first=True)
-        self.ln1 = nn.LayerNorm(d_model)
-        self.ffn = _make_ffn(d_model, ffn_ratio, dropout)
-        self.ln2 = nn.LayerNorm(d_model)
+        self.use_ffn = use_ffn
         nn.init.zeros_(self.attn.out_proj.weight)
         nn.init.zeros_(self.attn.out_proj.bias)
-        nn.init.zeros_(self.ffn[-2].weight)   # last Linear before final Dropout
-        nn.init.zeros_(self.ffn[-2].bias)
+        if use_ffn:
+            self.ln1 = nn.LayerNorm(d_model)
+            self.ffn = _make_ffn(d_model, ffn_ratio, dropout)
+            self.ln2 = nn.LayerNorm(d_model)
+            nn.init.zeros_(self.ffn[-2].weight)   # last Linear before final Dropout
+            nn.init.zeros_(self.ffn[-2].bias)
+        else:
+            self.ln = nn.LayerNorm(d_model)
 
     def forward(self, q: torch.Tensor) -> torch.Tensor:
         """q: (B, M, d)"""
         ctx, _ = self.attn(query=q, key=q, value=q, need_weights=False)
-        q = self.ln1(q + ctx)
-        return self.ln2(q + self.ffn(q))
+        if self.use_ffn:
+            q = self.ln1(q + ctx)
+            return self.ln2(q + self.ffn(q))
+        else:
+            return self.ln(q + ctx)
 
 
 class TextLabelCrossAttention(nn.Module):
     """Text->Label cross-attention. H attends to Q.
 
-    Full Transformer block: attention sublayer + FFN sublayer, each with
-    residual connection and LayerNorm.
-
-    Attention out_proj and FFN last linear are zero-initialized so that at
-    init H is unchanged, preventing random noise from corrupting span
-    representations early in training.
+    use_ffn=True  (default): full Transformer block, parameter names: ln1, ffn, ln2
+    use_ffn=False (legacy):  attention + single LayerNorm, parameter name: ln
+    Zero-init keeps H unchanged at startup.
     """
-    def __init__(self, d_model: int, num_heads: int = 8, dropout: float = 0.1, ffn_ratio: int = 4):
+    def __init__(self, d_model: int, num_heads: int = 8, dropout: float = 0.1,
+                 ffn_ratio: int = 4, use_ffn: bool = True):
         super().__init__()
         self.attn = nn.MultiheadAttention(embed_dim=d_model, num_heads=num_heads, dropout=dropout, batch_first=True)
-        self.ln1 = nn.LayerNorm(d_model)
-        self.ffn = _make_ffn(d_model, ffn_ratio, dropout)
-        self.ln2 = nn.LayerNorm(d_model)
+        self.use_ffn = use_ffn
         nn.init.zeros_(self.attn.out_proj.weight)
         nn.init.zeros_(self.attn.out_proj.bias)
-        nn.init.zeros_(self.ffn[-2].weight)
-        nn.init.zeros_(self.ffn[-2].bias)
+        if use_ffn:
+            self.ln1 = nn.LayerNorm(d_model)
+            self.ffn = _make_ffn(d_model, ffn_ratio, dropout)
+            self.ln2 = nn.LayerNorm(d_model)
+            nn.init.zeros_(self.ffn[-2].weight)
+            nn.init.zeros_(self.ffn[-2].bias)
+        else:
+            self.ln = nn.LayerNorm(d_model)
 
     def forward(self, h: torch.Tensor, q: torch.Tensor) -> torch.Tensor:
         """
@@ -139,8 +158,11 @@ class TextLabelCrossAttention(nn.Module):
         q: (B, M, d)  label vectors (key/value)
         """
         ctx, _ = self.attn(query=h, key=q, value=q, need_weights=False)
-        h = self.ln1(h + ctx)
-        return self.ln2(h + self.ffn(h))
+        if self.use_ffn:
+            h = self.ln1(h + ctx)
+            return self.ln2(h + self.ffn(h))
+        else:
+            return self.ln(h + ctx)
 
 
 class FusionStack(nn.Module):
@@ -155,11 +177,12 @@ class FusionStack(nn.Module):
     Input:  Q (B, M, d), H (B, N, d)
     Output: Q'' (B, M, d), H' (B, N, d)
     """
-    def __init__(self, d_model: int, num_heads: int = 8, dropout: float = 0.1, ffn_ratio: int = 4):
+    def __init__(self, d_model: int, num_heads: int = 8, dropout: float = 0.1,
+                 ffn_ratio: int = 4, use_ffn: bool = True):
         super().__init__()
-        self.label_to_text = CrossAttentionFusion(d_model=d_model, num_heads=num_heads, dropout=dropout, ffn_ratio=ffn_ratio)
-        self.label_self    = LabelSelfAttention(d_model=d_model, num_heads=num_heads, dropout=dropout, ffn_ratio=ffn_ratio)
-        self.text_to_label = TextLabelCrossAttention(d_model=d_model, num_heads=num_heads, dropout=dropout, ffn_ratio=ffn_ratio)
+        self.label_to_text = CrossAttentionFusion(d_model=d_model, num_heads=num_heads, dropout=dropout, ffn_ratio=ffn_ratio, use_ffn=use_ffn)
+        self.label_self    = LabelSelfAttention(d_model=d_model, num_heads=num_heads, dropout=dropout, ffn_ratio=ffn_ratio, use_ffn=use_ffn)
+        self.text_to_label = TextLabelCrossAttention(d_model=d_model, num_heads=num_heads, dropout=dropout, ffn_ratio=ffn_ratio, use_ffn=use_ffn)
 
     def forward(
         self,
@@ -188,10 +211,11 @@ class LabelOnlyFusionStack(nn.Module):
     Input:  Q (B, M, d), H (B, N, d)
     Output: Q'' (B, M, d)   [H is returned unchanged]
     """
-    def __init__(self, d_model: int, num_heads: int = 8, dropout: float = 0.1, ffn_ratio: int = 4):
+    def __init__(self, d_model: int, num_heads: int = 8, dropout: float = 0.1,
+                 ffn_ratio: int = 4, use_ffn: bool = True):
         super().__init__()
-        self.label_to_text = CrossAttentionFusion(d_model=d_model, num_heads=num_heads, dropout=dropout, ffn_ratio=ffn_ratio)
-        self.label_self    = LabelSelfAttention(d_model=d_model, num_heads=num_heads, dropout=dropout, ffn_ratio=ffn_ratio)
+        self.label_to_text = CrossAttentionFusion(d_model=d_model, num_heads=num_heads, dropout=dropout, ffn_ratio=ffn_ratio, use_ffn=use_ffn)
+        self.label_self    = LabelSelfAttention(d_model=d_model, num_heads=num_heads, dropout=dropout, ffn_ratio=ffn_ratio, use_ffn=use_ffn)
 
     def forward(
         self,
@@ -276,10 +300,9 @@ def span_loss(
 
 class DebertaSchemaSpanModel(nn.Module):
     """
-    Main model:
+    Baseline model (no fusion):
       Text encoder -> token reps
-      Label encoder -> label reps
-      Cross-attn fusion -> fused label reps
+      Label encoder -> label reps (independent, no cross-attention)
       Span scoring -> logits(span, label)
     """
     def __init__(
@@ -288,12 +311,11 @@ class DebertaSchemaSpanModel(nn.Module):
         share_encoders: bool = True,
         use_width_embedding: bool = True,
         max_span_width: int = 12,
-        num_heads: int = 8,
         dropout: float = 0.1,
-        ffn_ratio: int = 4,
         label_chunk_size: int = 16,
         use_pos_weight: bool = False,
         pos_weight_cap: float = 200.0,
+        **kwargs,  # absorb unused args forwarded by build_model (num_heads, ffn_ratio)
     ):
         super().__init__()
         self.text_encoder = AutoModel.from_pretrained(backbone_name)
@@ -308,8 +330,6 @@ class DebertaSchemaSpanModel(nn.Module):
         self.span_enum = SpanEnumerator(max_width=max_span_width)
         self.use_pos_weight = bool(use_pos_weight)
         self.pos_weight_cap = float(pos_weight_cap)
-
-        self.fuse = CrossAttentionFusion(d_model=d_model, num_heads=num_heads, dropout=dropout, ffn_ratio=ffn_ratio)
 
         self.use_width_embedding = bool(use_width_embedding)
         if self.use_width_embedding:
@@ -378,19 +398,14 @@ class DebertaSchemaSpanModel(nn.Module):
         # 1) Encode text
         H = self.encode_text(batch.text_input_ids, batch.text_attention_mask)  # (B, N, d)
 
-        # 2) Encode labels (label+desc)
+        # 2) Encode labels (label+desc) — no cross-attention fusion
         Q = self.encode_labels(batch.label_input_ids, batch.label_attention_mask, batch_size=B, num_labels=M)  # (B, M, d)
 
-        # 3) Cross-attn fusion (labels attend to text)
-        # key_padding_mask expects True for padding positions
-        pad_mask = batch.text_attention_mask == 0  # (B, N) bool
-        Qf = self.fuse(Q, H, h_key_padding_mask=pad_mask)  # (B, M, d)
-
-        # 4) Enumerate spans (based on full N, later masked by attention_mask)
+        # 3) Enumerate spans (based on full N, later masked by attention_mask)
         start_idx, end_idx, width = self.span_enum.enumerate(seq_len=N, device=device)
         S = start_idx.numel()
 
-        # 5) Build span representations from token reps
+        # 4) Build span representations from token reps
         H_start = H.index_select(dim=1, index=start_idx)  # (B, S, d)
         H_end   = H.index_select(dim=1, index=end_idx)    # (B, S, d)
 
@@ -402,10 +417,10 @@ class DebertaSchemaSpanModel(nn.Module):
 
         span_vec = self.span_ffn(span_in)
 
-        # 6) Logits
-        logits = torch.einsum("bsd,bmd->bsm", span_vec, Qf) + self.label_bias  # (B, S, M)
+        # 5) Logits
+        logits = torch.einsum("bsd,bmd->bsm", span_vec, Q) + self.label_bias  # (B, S, M)
 
-        # 7) Span validity mask
+        # 6) Span validity mask
         attn = batch.text_attention_mask.bool()
         span_mask = attn.index_select(dim=1, index=start_idx) & \
                     attn.index_select(dim=1, index=end_idx)
@@ -415,7 +430,7 @@ class DebertaSchemaSpanModel(nn.Module):
             "start_idx": start_idx, "end_idx": end_idx, "width": width,
         }
 
-        # 8) Optional loss
+        # 7) Optional loss
         if batch.span_targets is not None:
             out["loss"] = span_loss(
                 logits, batch.span_targets, span_mask,
@@ -451,6 +466,7 @@ class DebertaSchemaSpanModelV2(nn.Module):
         num_fusion_stacks: int = 2,
         use_pos_weight: bool = False,
         pos_weight_cap: float = 200.0,
+        use_fuse_ffn: bool = True,
     ):
         super().__init__()
         self.text_encoder = AutoModel.from_pretrained(backbone_name)
@@ -468,7 +484,7 @@ class DebertaSchemaSpanModelV2(nn.Module):
         self.pos_weight_cap = float(pos_weight_cap)
 
         self.fusion_stacks = nn.ModuleList([
-            FusionStack(d_model=d_model, num_heads=num_heads, dropout=dropout, ffn_ratio=ffn_ratio)
+            FusionStack(d_model=d_model, num_heads=num_heads, dropout=dropout, ffn_ratio=ffn_ratio, use_ffn=use_fuse_ffn)
             for _ in range(num_fusion_stacks)
         ])
 
@@ -595,6 +611,7 @@ class DebertaSchemaSpanModelV3(nn.Module):
         num_fusion_stacks: int = 2,
         use_pos_weight: bool = False,
         pos_weight_cap: float = 200.0,
+        use_fuse_ffn: bool = True,
     ):
         super().__init__()
         self.text_encoder = AutoModel.from_pretrained(backbone_name)
@@ -612,7 +629,7 @@ class DebertaSchemaSpanModelV3(nn.Module):
         self.pos_weight_cap = float(pos_weight_cap)
 
         self.fusion_stacks = nn.ModuleList([
-            LabelOnlyFusionStack(d_model=d_model, num_heads=num_heads, dropout=dropout, ffn_ratio=ffn_ratio)
+            LabelOnlyFusionStack(d_model=d_model, num_heads=num_heads, dropout=dropout, ffn_ratio=ffn_ratio, use_ffn=use_fuse_ffn)
             for _ in range(num_fusion_stacks)
         ])
 

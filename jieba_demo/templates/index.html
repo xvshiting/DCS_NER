@@ -1,0 +1,1094 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>结巴分词工具</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet" />
+  <style>
+    body { background: #f8f9fa; }
+    #auth-overlay {
+      position: fixed; inset: 0; z-index: 9999;
+      background: rgba(0,0,0,.55);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .badge-word {
+      font-size: .85rem;
+      font-weight: 400;
+      margin: 2px 3px;
+      cursor: pointer;
+      user-select: none;
+      transition: outline .1s, opacity .1s;
+    }
+    .badge-word.selected {
+      outline: 2px solid #fff;
+      opacity: 1 !important;
+      box-shadow: 0 0 0 3px rgba(0,0,0,.4);
+    }
+    #words-container { line-height: 2.4; }
+    .freq-sortable { cursor: pointer; user-select: none; }
+    .freq-sortable::after { content: ' ⇕'; font-size: .75em; opacity: .5; }
+    .dict-card { transition: box-shadow .15s; }
+    .dict-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,.12); }
+    pre#joined-result {
+      white-space: pre-wrap; word-break: break-all;
+      max-height: 300px; overflow-y: auto;
+      cursor: text;
+    }
+    #freq-table-wrapper { max-height: 320px; overflow-y: auto; }
+    /* Floating selection toolbar */
+    #sel-toolbar {
+      position: fixed; z-index: 8000;
+      background: #212529; color: #fff;
+      border-radius: 6px; padding: 4px 6px;
+      display: none; gap: 6px; align-items: center;
+      font-size: .8rem; white-space: nowrap;
+      box-shadow: 0 2px 8px rgba(0,0,0,.35);
+    }
+    #sel-toolbar button {
+      background: none; border: 1px solid rgba(255,255,255,.35);
+      color: #fff; border-radius: 4px;
+      padding: 1px 8px; font-size: .78rem; cursor: pointer;
+    }
+    #sel-toolbar button:hover { background: rgba(255,255,255,.15); }
+    /* Badge selection action bar */
+    #badge-action-bar {
+      display: none;
+      background: #e9f3ff;
+      border: 1px solid #b6d4fe;
+      border-radius: 6px;
+      padding: 6px 12px;
+      margin-bottom: 8px;
+      align-items: center;
+      gap: 10px;
+      font-size: .85rem;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ─── Auth overlay (login only) ─────────────────────────────────────── -->
+<div id="auth-overlay">
+  <div class="card shadow-lg" style="width:360px">
+    <div class="card-header text-center fw-bold fs-5">
+      <i class="bi bi-scissors me-1"></i> 结巴分词工具
+    </div>
+    <div class="card-body">
+      <div id="auth-error" class="alert alert-danger d-none py-2 mb-3"></div>
+      <form id="login-form">
+        <div class="mb-3">
+          <input class="form-control" id="login-username" placeholder="用户名" required autocomplete="username" />
+        </div>
+        <div class="mb-3">
+          <input type="password" class="form-control" id="login-password" placeholder="密码" required autocomplete="current-password" />
+        </div>
+        <button type="submit" class="btn btn-primary w-100">登录</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ─── Main app ───────────────────────────────────────────────────────── -->
+<nav class="navbar navbar-dark bg-dark">
+  <div class="container-fluid">
+    <span class="navbar-brand mb-0 h1"><i class="bi bi-scissors me-1"></i> 结巴分词工具</span>
+    <div class="d-flex align-items-center gap-2">
+      <span class="text-light small" id="nav-username"></span>
+      <span class="badge bg-danger d-none" id="nav-admin-badge">管理员</span>
+      <button class="btn btn-outline-light btn-sm" id="logout-btn">退出</button>
+    </div>
+  </div>
+</nav>
+
+<div class="container-fluid py-3">
+  <ul class="nav nav-tabs mb-3" id="main-tabs">
+    <li class="nav-item">
+      <button class="nav-link active" data-tab="segment">
+        <i class="bi bi-text-paragraph me-1"></i>分词工具
+      </button>
+    </li>
+    <li class="nav-item">
+      <button class="nav-link" data-tab="batch">
+        <i class="bi bi-files me-1"></i>批量处理
+      </button>
+    </li>
+    <li class="nav-item">
+      <button class="nav-link" data-tab="dicts">
+        <i class="bi bi-book me-1"></i>词典管理
+      </button>
+    </li>
+    <li class="nav-item d-none" id="admin-tab-item">
+      <button class="nav-link" data-tab="admin">
+        <i class="bi bi-people me-1"></i>用户管理
+      </button>
+    </li>
+  </ul>
+
+  <!-- ── Tab: 分词工具 ─────────────────────────────────────────────── -->
+  <div id="tab-segment">
+    <div class="row g-3">
+      <div class="col-lg-5">
+        <div class="card h-100">
+          <div class="card-header fw-semibold">输入</div>
+          <div class="card-body d-flex flex-column gap-2">
+            <textarea id="seg-text" class="form-control flex-grow-1" rows="8"
+              placeholder="在此输入中文文本…"></textarea>
+            <div class="d-flex align-items-center gap-2">
+              <label class="btn btn-outline-secondary btn-sm mb-0">
+                <i class="bi bi-upload"></i> 上传 txt
+                <input type="file" id="seg-file" accept=".txt" class="d-none" />
+              </label>
+              <span id="seg-file-name" class="text-muted small"></span>
+              <button class="btn btn-link btn-sm text-danger p-0 d-none" id="seg-file-clear">
+                <i class="bi bi-x-circle"></i>
+              </button>
+            </div>
+            <div class="row g-2">
+              <div class="col">
+                <label class="form-label small mb-1">词典</label>
+                <select class="form-select form-select-sm" id="seg-dict"></select>
+              </div>
+              <div class="col">
+                <label class="form-label small mb-1">分词方法</label>
+                <select class="form-select form-select-sm" id="seg-method">
+                  <option value="precise">精确模式</option>
+                  <option value="full">全模式</option>
+                  <option value="search">搜索引擎模式</option>
+                </select>
+              </div>
+              <div class="col-auto">
+                <label class="form-label small mb-1">分隔符</label>
+                <input class="form-control form-control-sm" id="seg-sep" value=" " style="width:64px" />
+              </div>
+            </div>
+            <button class="btn btn-primary" id="seg-btn">
+              <i class="bi bi-play-fill"></i> 开始分词
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-lg-7">
+        <div class="card">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <span class="fw-semibold">结果</span>
+            <span id="seg-stats" class="text-muted small"></span>
+          </div>
+          <div class="card-body p-0">
+            <ul class="nav nav-pills px-3 pt-2 gap-2" id="result-tabs">
+              <li class="nav-item">
+                <button class="nav-link active btn-sm" data-rtab="joined">合并文本</button>
+              </li>
+              <li class="nav-item">
+                <button class="nav-link btn-sm" data-rtab="badges">彩色标签</button>
+              </li>
+              <li class="nav-item">
+                <button class="nav-link btn-sm" data-rtab="freq">词频统计</button>
+              </li>
+            </ul>
+            <div class="p-3">
+              <!-- Joined -->
+              <div id="rtab-joined">
+                <pre id="joined-result" class="bg-light rounded p-2 small text-secondary">（结果将显示在此）</pre>
+                <div class="d-flex gap-2 mt-1">
+                  <button class="btn btn-outline-secondary btn-sm" id="download-btn" disabled>
+                    <i class="bi bi-download"></i> 下载 txt
+                  </button>
+                </div>
+              </div>
+              <!-- Badges -->
+              <div id="rtab-badges" class="d-none">
+                <!-- Action bar shown when badges are selected -->
+                <div id="badge-action-bar" class="d-flex">
+                  <span id="badge-sel-count" class="fw-semibold me-1"></span>
+                  <span class="text-muted me-auto">个词已选中</span>
+                  <button class="btn btn-link btn-sm text-muted p-0 me-2" id="badge-clear-btn">清除</button>
+                  <button class="btn btn-sm btn-primary" id="badge-add-dict-btn">
+                    <i class="bi bi-plus"></i> 添加到词典
+                  </button>
+                </div>
+                <div id="words-container" class="p-2 border rounded bg-white" style="min-height:80px">
+                  <span class="text-muted small">（结果将显示在此，点击词语可选中）</span>
+                </div>
+              </div>
+              <!-- Freq -->
+              <div id="rtab-freq" class="d-none">
+                <div id="freq-table-wrapper">
+                  <table class="table table-sm table-hover table-bordered mb-0">
+                    <thead class="table-light sticky-top">
+                      <tr>
+                        <th class="freq-sortable" data-col="word">词语</th>
+                        <th class="freq-sortable" data-col="freq">频次</th>
+                        <th style="width:80px"></th>
+                      </tr>
+                    </thead>
+                    <tbody id="freq-tbody"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Tab: 批量处理 ─────────────────────────────────────────────── -->
+  <div id="tab-batch" class="d-none">
+    <div class="card" style="max-width:700px">
+      <div class="card-header fw-semibold">批量分词</div>
+      <div class="card-body d-flex flex-column gap-3">
+        <div>
+          <label class="form-label">选择多个 txt 文件</label>
+          <input type="file" class="form-control" id="batch-files" accept=".txt" multiple />
+        </div>
+        <div class="row g-2">
+          <div class="col">
+            <label class="form-label small mb-1">词典</label>
+            <select class="form-select form-select-sm" id="batch-dict"></select>
+          </div>
+          <div class="col">
+            <label class="form-label small mb-1">分词方法</label>
+            <select class="form-select form-select-sm" id="batch-method">
+              <option value="precise">精确模式</option>
+              <option value="full">全模式</option>
+              <option value="search">搜索引擎模式</option>
+            </select>
+          </div>
+          <div class="col-auto">
+            <label class="form-label small mb-1">分隔符</label>
+            <input class="form-control form-control-sm" id="batch-sep" value=" " style="width:64px" />
+          </div>
+        </div>
+        <div>
+          <button class="btn btn-primary" id="batch-btn">
+            <i class="bi bi-download"></i> 批量处理并下载 zip
+          </button>
+        </div>
+        <div id="batch-status" class="text-muted small"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Tab: 词典管理 ─────────────────────────────────────────────── -->
+  <div id="tab-dicts" class="d-none">
+    <div class="row g-3">
+      <div class="col-lg-6">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h6 class="mb-0">我的词典</h6>
+          <button class="btn btn-primary btn-sm" id="new-dict-btn">
+            <i class="bi bi-plus-lg"></i> 新建
+          </button>
+        </div>
+        <div id="my-dicts-list"></div>
+      </div>
+      <div class="col-lg-6">
+        <h6 class="mb-2">公共词典</h6>
+        <div id="pub-dicts-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Tab: 用户管理（仅管理员）──────────────────────────────────── -->
+  <div id="tab-admin" class="d-none">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h6 class="mb-0">用户列表</h6>
+      <button class="btn btn-primary btn-sm" id="new-user-btn">
+        <i class="bi bi-person-plus"></i> 新建用户
+      </button>
+    </div>
+    <div class="table-responsive" style="max-width:700px">
+      <table class="table table-sm table-hover table-bordered">
+        <thead class="table-light">
+          <tr>
+            <th>ID</th><th>用户名</th><th>角色</th><th>创建时间</th><th></th>
+          </tr>
+        </thead>
+        <tbody id="admin-users-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ─── Floating selection toolbar ────────────────────────────────────── -->
+<div id="sel-toolbar">
+  <span id="sel-preview"></span>
+  <button id="sel-add-btn"><i class="bi bi-plus"></i> 添加到词典</button>
+</div>
+
+<!-- ─── Edit/Create Dict Modal ───────────────────────────────────────── -->
+<div class="modal fade" id="dict-modal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="dict-modal-title">新建词典</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label">词典名称</label>
+          <input class="form-control" id="dict-name" placeholder="词典名称" />
+        </div>
+        <div class="mb-1">
+          <label class="form-label">词条内容</label>
+          <div class="text-muted small mb-1">每行一词，格式：词语 [词频] [词性]（词频和词性可省略）</div>
+          <textarea class="form-control font-monospace" id="dict-content" rows="12"
+            placeholder="例：&#10;自然语言处理&#10;深度学习 10&#10;神经网络 5 n"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <span id="dict-modal-error" class="text-danger small me-auto"></span>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+        <button type="button" class="btn btn-primary" id="dict-save-btn">保存</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── View Public Dict Modal ───────────────────────────────────────── -->
+<div class="modal fade" id="pub-dict-modal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="pub-dict-modal-title">公共词典</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <pre id="pub-dict-content" class="bg-light rounded p-2 small" style="max-height:400px;overflow-y:auto"></pre>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── Add to Dict Modal ─────────────────────────────────────────────── -->
+<div class="modal fade" id="add-dict-modal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">添加到词典</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label small">将添加以下词条：</label>
+          <div id="add-dict-preview" class="border rounded p-2 bg-light small font-monospace"
+            style="max-height:120px;overflow-y:auto"></div>
+        </div>
+        <div class="mb-2">
+          <label class="form-label">选择目标词典</label>
+          <select class="form-select" id="add-dict-select"></select>
+        </div>
+        <div id="add-dict-result" class="text-muted small d-none"></div>
+      </div>
+      <div class="modal-footer">
+        <span id="add-dict-error" class="text-danger small me-auto"></span>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+        <button type="button" class="btn btn-primary" id="add-dict-confirm-btn">确认添加</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── Create/Edit User Modal (admin) ───────────────────────────────── -->
+<div class="modal fade" id="user-modal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="user-modal-title">新建用户</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3" id="user-modal-name-group">
+          <label class="form-label">用户名</label>
+          <input class="form-control" id="user-modal-username" placeholder="用户名" />
+        </div>
+        <div class="mb-3">
+          <label class="form-label" id="user-modal-pw-label">密码</label>
+          <input type="password" class="form-control" id="user-modal-password" placeholder="密码（至少6位）" />
+        </div>
+        <div class="form-check d-none" id="user-modal-admin-group">
+          <input class="form-check-input" type="checkbox" id="user-modal-is-admin" />
+          <label class="form-check-label" for="user-modal-is-admin">管理员权限</label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <span id="user-modal-error" class="text-danger small me-auto"></span>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+        <button type="button" class="btn btn-primary" id="user-modal-save-btn">保存</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+// ─── Constants ────────────────────────────────────────────────────────────────
+const COLOR_POOL = [
+  '#0d6efd','#198754','#dc3545','#6f42c1','#20c997',
+  '#fd7e14','#0dcaf0','#d63384','#6c757d','#ffc107'
+];
+
+// ─── State ────────────────────────────────────────────────────────────────────
+let currentUser = null;
+let dicts = [];
+let segResult = null;
+let editingDictId = null;
+let freqData = [];
+let freqSortCol = 'freq';
+let freqSortAsc = false;
+let selectedBadges = new Set();   // indices of selected badges
+let pendingAddWords = [];          // words queued for "add to dict"
+let userModalMode = 'create';      // 'create' | 'password'
+let userModalTargetId = null;
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+async function api(method, path, body, isForm = false) {
+  const opts = { method, credentials: 'same-origin' };
+  if (body !== undefined && !isForm) {
+    opts.headers = { 'Content-Type': 'application/json' };
+    opts.body = JSON.stringify(body);
+  } else if (isForm) {
+    opts.body = body;
+  }
+  const res = await fetch(path, opts);
+  if (res.headers.get('content-type')?.includes('json')) {
+    return { ok: res.ok, status: res.status, data: await res.json() };
+  }
+  return { ok: res.ok, status: res.status, blob: await res.blob(), headers: res.headers };
+}
+
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ─── Auth ─────────────────────────────────────────────────────────────────────
+document.getElementById('login-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const errEl = document.getElementById('auth-error');
+  errEl.classList.add('d-none');
+  const username = document.getElementById('login-username').value.trim();
+  const password = document.getElementById('login-password').value;
+  const r = await api('POST', '/api/login', { username, password });
+  if (!r.ok) {
+    errEl.textContent = r.data.error || '登录失败';
+    errEl.classList.remove('d-none');
+    return;
+  }
+  currentUser = r.data;
+  onLogin();
+});
+
+document.getElementById('logout-btn').addEventListener('click', async () => {
+  await api('POST', '/api/logout');
+  currentUser = null;
+  document.getElementById('auth-overlay').style.display = 'flex';
+  document.getElementById('login-password').value = '';
+});
+
+async function onLogin() {
+  document.getElementById('auth-overlay').style.display = 'none';
+  document.getElementById('nav-username').textContent = currentUser.username;
+  if (currentUser.is_admin) {
+    document.getElementById('nav-admin-badge').classList.remove('d-none');
+    document.getElementById('admin-tab-item').classList.remove('d-none');
+  }
+  await loadDicts();
+}
+
+// ─── Main tabs ────────────────────────────────────────────────────────────────
+document.querySelectorAll('#main-tabs .nav-link').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#main-tabs .nav-link').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    ['segment','batch','dicts','admin'].forEach(t => {
+      document.getElementById('tab-'+t).classList.toggle('d-none', t !== btn.dataset.tab);
+    });
+    if (btn.dataset.tab === 'dicts') renderDicts();
+    if (btn.dataset.tab === 'admin') loadAdminUsers();
+  });
+});
+
+// ─── Result tabs ──────────────────────────────────────────────────────────────
+document.querySelectorAll('#result-tabs .nav-link').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#result-tabs .nav-link').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    ['joined','badges','freq'].forEach(t => {
+      document.getElementById('rtab-'+t).classList.toggle('d-none', t !== btn.dataset.rtab);
+    });
+  });
+});
+
+// ─── Dicts ────────────────────────────────────────────────────────────────────
+async function loadDicts() {
+  const r = await api('GET', '/api/dicts');
+  if (!r.ok) return;
+  dicts = r.data;
+  populateDictSelects();
+  populateAddDictSelect();
+}
+
+function populateDictSelects() {
+  const myDicts = dicts.filter(d => !d.is_public);
+  const pubDicts = dicts.filter(d => d.is_public);
+  ['seg-dict','batch-dict'].forEach(id => {
+    const sel = document.getElementById(id);
+    sel.innerHTML = '<option value="">（不使用词典）</option>';
+    if (myDicts.length) {
+      const grp = document.createElement('optgroup');
+      grp.label = '我的词典';
+      myDicts.forEach(d => {
+        const opt = document.createElement('option');
+        opt.value = d.id; opt.textContent = d.name;
+        grp.appendChild(opt);
+      });
+      sel.appendChild(grp);
+    }
+    if (pubDicts.length) {
+      const grp = document.createElement('optgroup');
+      grp.label = '公共词典';
+      pubDicts.forEach(d => {
+        const opt = document.createElement('option');
+        opt.value = d.id; opt.textContent = d.name + ' (公共)';
+        grp.appendChild(opt);
+      });
+      sel.appendChild(grp);
+    }
+  });
+}
+
+function populateAddDictSelect() {
+  const myDicts = dicts.filter(d => !d.is_public);
+  const sel = document.getElementById('add-dict-select');
+  sel.innerHTML = myDicts.length
+    ? myDicts.map(d => `<option value="${d.id}">${escHtml(d.name)}</option>`).join('')
+    : '<option value="">（无私有词典，请先在词典管理中新建）</option>';
+}
+
+function renderDicts() {
+  const uid = currentUser?.id;
+  const myDicts = dicts.filter(d => !d.is_public);
+  const pubDicts = dicts.filter(d => d.is_public);
+
+  const myEl = document.getElementById('my-dicts-list');
+  if (!myDicts.length) {
+    myEl.innerHTML = '<p class="text-muted small">暂无私有词典</p>';
+  } else {
+    myEl.innerHTML = myDicts.map(d => `
+      <div class="card dict-card mb-2">
+        <div class="card-body py-2 px-3 d-flex justify-content-between align-items-center">
+          <div>
+            <span class="fw-semibold">${escHtml(d.name)}</span>
+            <span class="text-muted small ms-2">${d.updated_at.slice(0,16)}</span>
+          </div>
+          <div class="d-flex gap-1">
+            <button class="btn btn-outline-primary btn-sm" title="编辑" onclick="editDict(${d.id})">
+              <i class="bi bi-pencil"></i>
+            </button>
+            <button class="btn btn-outline-success btn-sm" title="发布到公共区" onclick="publishDict(${d.id},'${escHtml(d.name).replace(/'/g,"\\'")}')">
+              <i class="bi bi-cloud-upload"></i>
+            </button>
+            <button class="btn btn-outline-danger btn-sm" title="删除" onclick="deleteDict(${d.id},'${escHtml(d.name).replace(/'/g,"\\'")}')">
+              <i class="bi bi-trash"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  const pubEl = document.getElementById('pub-dicts-list');
+  if (!pubDicts.length) {
+    pubEl.innerHTML = '<p class="text-muted small">暂无公共词典</p>';
+  } else {
+    pubEl.innerHTML = pubDicts.map(d => `
+      <div class="card dict-card mb-2">
+        <div class="card-body py-2 px-3 d-flex justify-content-between align-items-center">
+          <div>
+            <span class="fw-semibold">${escHtml(d.name)}</span>
+            <span class="badge bg-success-subtle text-success-emphasis ms-1">公共</span>
+            <span class="text-muted small ms-2">by ${escHtml(d.owner_name)}</span>
+          </div>
+          <div class="d-flex gap-1">
+            <button class="btn btn-outline-secondary btn-sm" title="查看" onclick="viewPubDict(${d.id},'${escHtml(d.name).replace(/'/g,"\\'")}')">
+              <i class="bi bi-eye"></i>
+            </button>
+            <button class="btn btn-outline-primary btn-sm" title="复制到我的词典" onclick="forkDict(${d.id},'${escHtml(d.name).replace(/'/g,"\\'")}')">
+              <i class="bi bi-copy"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+    `).join('');
+  }
+}
+
+// New dict
+document.getElementById('new-dict-btn').addEventListener('click', () => {
+  editingDictId = null;
+  document.getElementById('dict-modal-title').textContent = '新建词典';
+  document.getElementById('dict-name').value = '';
+  document.getElementById('dict-content').value = '';
+  document.getElementById('dict-modal-error').textContent = '';
+  new bootstrap.Modal('#dict-modal').show();
+});
+
+async function editDict(id) {
+  const r = await api('GET', `/api/dicts/${id}`);
+  if (!r.ok) { alert('获取词典失败'); return; }
+  editingDictId = id;
+  document.getElementById('dict-modal-title').textContent = '编辑词典';
+  document.getElementById('dict-name').value = r.data.name;
+  document.getElementById('dict-content').value = r.data.content;
+  document.getElementById('dict-modal-error').textContent = '';
+  new bootstrap.Modal('#dict-modal').show();
+}
+
+document.getElementById('dict-save-btn').addEventListener('click', async () => {
+  const name = document.getElementById('dict-name').value.trim();
+  const content = document.getElementById('dict-content').value;
+  const errEl = document.getElementById('dict-modal-error');
+  if (!name) { errEl.textContent = '词典名称不能为空'; return; }
+  let r;
+  if (editingDictId) {
+    r = await api('PUT', `/api/dicts/${editingDictId}`, { name, content });
+  } else {
+    r = await api('POST', '/api/dicts', { name, content });
+  }
+  if (!r.ok) { errEl.textContent = r.data.error || '保存失败'; return; }
+  bootstrap.Modal.getInstance(document.getElementById('dict-modal'))?.hide();
+  await loadDicts();
+  renderDicts();
+});
+
+async function publishDict(id, name) {
+  if (!confirm(`发布词典「${name}」到公共区？同名公共词典将被覆盖。`)) return;
+  const r = await api('POST', `/api/dicts/${id}/publish`);
+  if (!r.ok) { alert(r.data.error || '发布失败'); return; }
+  await loadDicts();
+  renderDicts();
+}
+
+async function deleteDict(id, name) {
+  if (!confirm(`确认删除词典「${name}」？`)) return;
+  const r = await api('DELETE', `/api/dicts/${id}`);
+  if (!r.ok) { alert(r.data.error || '删除失败'); return; }
+  await loadDicts();
+  renderDicts();
+}
+
+async function viewPubDict(id, name) {
+  const r = await api('GET', `/api/dicts/${id}`);
+  if (!r.ok) { alert('获取词典失败'); return; }
+  document.getElementById('pub-dict-modal-title').textContent = name;
+  document.getElementById('pub-dict-content').textContent = r.data.content || '（空词典）';
+  new bootstrap.Modal('#pub-dict-modal').show();
+}
+
+async function forkDict(id, name) {
+  const r = await api('POST', `/api/dicts/${id}/fork`);
+  if (!r.ok) { alert(r.data.error || '复制失败'); return; }
+  await loadDicts();
+  renderDicts();
+  // Brief toast-like feedback
+  const btn = event.currentTarget;
+  const orig = btn.innerHTML;
+  btn.innerHTML = '<i class="bi bi-check"></i>';
+  btn.classList.replace('btn-outline-primary','btn-success');
+  setTimeout(() => {
+    btn.innerHTML = orig;
+    btn.classList.replace('btn-success','btn-outline-primary');
+  }, 1500);
+}
+
+// ─── Segmentation ─────────────────────────────────────────────────────────────
+
+// File handling
+document.getElementById('seg-file').addEventListener('change', e => {
+  const f = e.target.files[0];
+  document.getElementById('seg-file-name').textContent = f ? f.name : '';
+  document.getElementById('seg-file-clear').classList.toggle('d-none', !f);
+});
+
+document.getElementById('seg-file-clear').addEventListener('click', () => {
+  document.getElementById('seg-file').value = '';
+  document.getElementById('seg-file-name').textContent = '';
+  document.getElementById('seg-file-clear').classList.add('d-none');
+});
+
+document.getElementById('seg-btn').addEventListener('click', async () => {
+  const file = document.getElementById('seg-file').files[0];
+  const text = document.getElementById('seg-text').value;
+  const dictId = document.getElementById('seg-dict').value;
+  const method = document.getElementById('seg-method').value;
+  const separator = document.getElementById('seg-sep').value;
+
+  if (!file && !text.trim()) { alert('请输入文本或上传文件'); return; }
+
+  const btn = document.getElementById('seg-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>分词中…';
+
+  let r;
+  try {
+    if (file) {
+      const fd = new FormData();
+      fd.append('file', file);
+      if (dictId) fd.append('dict_id', dictId);
+      fd.append('method', method);
+      fd.append('separator', separator);
+      r = await api('POST', '/api/segment', fd, true);
+    } else {
+      r = await api('POST', '/api/segment', { text, dict_id: dictId || null, method, separator });
+    }
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-play-fill"></i> 开始分词';
+  }
+
+  if (!r.ok) { alert(r.data?.error || '分词失败'); return; }
+  segResult = r.data;
+  selectedBadges.clear();
+  updateBadgeActionBar();
+  renderSegResult();
+});
+
+function renderSegResult() {
+  if (!segResult) return;
+
+  document.getElementById('seg-stats').textContent =
+    `共 ${segResult.count} 词，${segResult.unique_count} 种`;
+
+  // Joined
+  document.getElementById('joined-result').textContent = segResult.joined || '（无结果）';
+  document.getElementById('download-btn').disabled = false;
+
+  // Badges
+  renderBadges();
+
+  // Freq
+  freqData = segResult.freq.map(([word, count]) => ({ word, count }));
+  freqSortCol = 'freq'; freqSortAsc = false;
+  renderFreqTable();
+}
+
+function renderBadges() {
+  const container = document.getElementById('words-container');
+  container.innerHTML = '';
+  if (!segResult?.words?.length) {
+    container.innerHTML = '<span class="text-muted small">（无结果）</span>';
+    return;
+  }
+  segResult.words.forEach((w, i) => {
+    const span = document.createElement('span');
+    span.className = 'badge badge-word';
+    span.style.backgroundColor = COLOR_POOL[i % COLOR_POOL.length];
+    span.style.color = '#fff';
+    span.textContent = w;
+    span.dataset.idx = i;
+    span.addEventListener('click', () => toggleBadge(i, span));
+    container.appendChild(span);
+  });
+}
+
+function toggleBadge(idx, el) {
+  if (selectedBadges.has(idx)) {
+    selectedBadges.delete(idx);
+    el.classList.remove('selected');
+  } else {
+    selectedBadges.add(idx);
+    el.classList.add('selected');
+  }
+  updateBadgeActionBar();
+}
+
+function updateBadgeActionBar() {
+  const bar = document.getElementById('badge-action-bar');
+  const count = selectedBadges.size;
+  if (count > 0) {
+    document.getElementById('badge-sel-count').textContent = count;
+    bar.style.display = 'flex';
+  } else {
+    bar.style.display = 'none';
+  }
+}
+
+document.getElementById('badge-clear-btn').addEventListener('click', () => {
+  selectedBadges.clear();
+  document.querySelectorAll('.badge-word.selected').forEach(el => el.classList.remove('selected'));
+  updateBadgeActionBar();
+});
+
+document.getElementById('badge-add-dict-btn').addEventListener('click', () => {
+  if (!selectedBadges.size) return;
+  const words = [...selectedBadges].map(i => segResult.words[i]);
+  openAddToDict(words);
+});
+
+function renderFreqTable() {
+  const sorted = [...freqData].sort((a, b) => {
+    const v = freqSortCol === 'word'
+      ? a.word.localeCompare(b.word, 'zh')
+      : a.count - b.count;
+    return freqSortAsc ? v : -v;
+  });
+  const tbody = document.getElementById('freq-tbody');
+  tbody.innerHTML = sorted.slice(0, 100).map(r => `
+    <tr>
+      <td>${escHtml(r.word)}</td>
+      <td>${r.count}</td>
+      <td>
+        <button class="btn btn-link btn-sm p-0 text-primary" style="font-size:.75rem"
+          onclick="openAddToDict(['${escHtml(r.word).replace(/'/g,"\\'")}'])">
+          <i class="bi bi-plus-circle"></i>
+        </button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+document.querySelectorAll('.freq-sortable').forEach(th => {
+  th.addEventListener('click', () => {
+    const col = th.dataset.col;
+    if (freqSortCol === col) freqSortAsc = !freqSortAsc;
+    else { freqSortCol = col; freqSortAsc = false; }
+    renderFreqTable();
+  });
+});
+
+// Download single
+document.getElementById('download-btn').addEventListener('click', async () => {
+  const file = document.getElementById('seg-file').files[0];
+  const text = document.getElementById('seg-text').value;
+  const dictId = document.getElementById('seg-dict').value;
+  const method = document.getElementById('seg-method').value;
+  const separator = document.getElementById('seg-sep').value;
+
+  let r, downloadName;
+  if (file) {
+    const fd = new FormData();
+    fd.append('file', file);
+    if (dictId) fd.append('dict_id', dictId);
+    fd.append('method', method);
+    fd.append('separator', separator);
+    r = await api('POST', '/api/segment/download', fd, true);
+    downloadName = file.name;
+  } else {
+    r = await api('POST', '/api/segment/download', {
+      text, dict_id: dictId || null, method, separator, filename: 'result.txt'
+    });
+    downloadName = 'result.txt';
+  }
+
+  if (!r.ok) { alert('下载失败'); return; }
+  downloadBlob(r.blob, downloadName);
+});
+
+// ─── Text selection → add to dict ────────────────────────────────────────────
+const selToolbar = document.getElementById('sel-toolbar');
+let pendingSelText = '';
+
+document.getElementById('joined-result').addEventListener('mouseup', e => {
+  setTimeout(() => {   // let browser finalize selection
+    const raw = window.getSelection()?.toString();
+    if (!raw?.trim()) { selToolbar.style.display = 'none'; return; }
+    // Strip the separator so "自然 语言 处理" → "自然语言处理"
+    const sep = document.getElementById('seg-sep').value;
+    // Split by separator (and by newline between lines), join without separator
+    const cleaned = sep
+      ? raw.split('\n').map(line => line.split(sep).join('')).join('')
+      : raw.replace(/\s+/g, '');
+    pendingSelText = cleaned.trim();
+    if (!pendingSelText) { selToolbar.style.display = 'none'; return; }
+    const preview = pendingSelText.length > 20 ? pendingSelText.slice(0, 20) + '…' : pendingSelText;
+    document.getElementById('sel-preview').textContent = `「${preview}」`;
+    selToolbar.style.left = (e.clientX - 40) + 'px';
+    selToolbar.style.top  = (e.clientY - 46) + 'px';
+    selToolbar.style.display = 'flex';
+  }, 10);
+});
+
+document.getElementById('sel-add-btn').addEventListener('click', () => {
+  selToolbar.style.display = 'none';
+  if (!pendingSelText) return;
+  openAddToDict([pendingSelText]);
+  pendingSelText = '';
+  window.getSelection()?.removeAllRanges();
+});
+
+document.addEventListener('mousedown', e => {
+  if (!selToolbar.contains(e.target) && e.target.id !== 'joined-result') {
+    selToolbar.style.display = 'none';
+  }
+});
+
+// ─── Add to dict modal ────────────────────────────────────────────────────────
+function openAddToDict(words) {
+  pendingAddWords = words.filter(w => w && w.trim());
+  if (!pendingAddWords.length) return;
+
+  const myDicts = dicts.filter(d => !d.is_public);
+  if (!myDicts.length) {
+    alert('请先在"词典管理"中新建一个私有词典。');
+    return;
+  }
+
+  populateAddDictSelect();
+  document.getElementById('add-dict-preview').textContent = pendingAddWords.join('\n');
+  document.getElementById('add-dict-error').textContent = '';
+  document.getElementById('add-dict-result').classList.add('d-none');
+  new bootstrap.Modal('#add-dict-modal').show();
+}
+
+document.getElementById('add-dict-confirm-btn').addEventListener('click', async () => {
+  const dictId = document.getElementById('add-dict-select').value;
+  const errEl = document.getElementById('add-dict-error');
+  const resEl = document.getElementById('add-dict-result');
+  errEl.textContent = '';
+  if (!dictId) { errEl.textContent = '请选择词典'; return; }
+
+  const r = await api('POST', `/api/dicts/${dictId}/append`, { words: pendingAddWords });
+  if (!r.ok) { errEl.textContent = r.data.error || '添加失败'; return; }
+
+  resEl.textContent = `成功添加 ${r.data.added} 个词条，跳过 ${r.data.skipped} 个重复词条。`;
+  resEl.classList.remove('d-none');
+  await loadDicts();
+
+  setTimeout(() => {
+    bootstrap.Modal.getInstance(document.getElementById('add-dict-modal'))?.hide();
+  }, 1200);
+});
+
+// ─── Batch ────────────────────────────────────────────────────────────────────
+document.getElementById('batch-btn').addEventListener('click', async () => {
+  const files = document.getElementById('batch-files').files;
+  if (!files.length) { alert('请选择文件'); return; }
+  const dictId = document.getElementById('batch-dict').value;
+  const method = document.getElementById('batch-method').value;
+  const separator = document.getElementById('batch-sep').value;
+  const status = document.getElementById('batch-status');
+  const btn = document.getElementById('batch-btn');
+  status.textContent = '处理中…';
+  btn.disabled = true;
+
+  const fd = new FormData();
+  for (const f of files) fd.append('files', f);
+  if (dictId) fd.append('dict_id', dictId);
+  fd.append('method', method);
+  fd.append('separator', separator);
+
+  const r = await api('POST', '/api/segment/batch', fd, true);
+  btn.disabled = false;
+  if (!r.ok) {
+    status.textContent = '处理失败';
+    alert(r.data?.error || '批量处理失败');
+    return;
+  }
+  status.textContent = `处理完成，共 ${files.length} 个文件`;
+  downloadBlob(r.blob, 'batch_segmented.zip');
+});
+
+// ─── Admin: user management ───────────────────────────────────────────────────
+async function loadAdminUsers() {
+  const r = await api('GET', '/api/admin/users');
+  if (!r.ok) return;
+  const tbody = document.getElementById('admin-users-tbody');
+  tbody.innerHTML = r.data.map(u => `
+    <tr>
+      <td>${u.id}</td>
+      <td>${escHtml(u.username)}</td>
+      <td>${u.is_admin ? '<span class="badge bg-danger">管理员</span>' : '普通用户'}</td>
+      <td class="small text-muted">${u.created.slice(0,16)}</td>
+      <td>
+        <div class="d-flex gap-1">
+          <button class="btn btn-outline-secondary btn-sm" onclick="openChangePassword(${u.id},'${escHtml(u.username).replace(/'/g,"\\'")}')">
+            <i class="bi bi-key"></i>
+          </button>
+          <button class="btn btn-outline-danger btn-sm" onclick="adminDeleteUser(${u.id},'${escHtml(u.username).replace(/'/g,"\\'")}')">
+            <i class="bi bi-trash"></i>
+          </button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+}
+
+document.getElementById('new-user-btn').addEventListener('click', () => {
+  userModalMode = 'create';
+  userModalTargetId = null;
+  document.getElementById('user-modal-title').textContent = '新建用户';
+  document.getElementById('user-modal-username').value = '';
+  document.getElementById('user-modal-password').value = '';
+  document.getElementById('user-modal-pw-label').textContent = '密码';
+  document.getElementById('user-modal-name-group').classList.remove('d-none');
+  document.getElementById('user-modal-admin-group').classList.remove('d-none');
+  document.getElementById('user-modal-is-admin').checked = false;
+  document.getElementById('user-modal-error').textContent = '';
+  new bootstrap.Modal('#user-modal').show();
+});
+
+function openChangePassword(userId, username) {
+  userModalMode = 'password';
+  userModalTargetId = userId;
+  document.getElementById('user-modal-title').textContent = `修改密码：${username}`;
+  document.getElementById('user-modal-password').value = '';
+  document.getElementById('user-modal-pw-label').textContent = '新密码';
+  document.getElementById('user-modal-name-group').classList.add('d-none');
+  document.getElementById('user-modal-admin-group').classList.add('d-none');
+  document.getElementById('user-modal-error').textContent = '';
+  new bootstrap.Modal('#user-modal').show();
+}
+
+document.getElementById('user-modal-save-btn').addEventListener('click', async () => {
+  const errEl = document.getElementById('user-modal-error');
+  errEl.textContent = '';
+  const password = document.getElementById('user-modal-password').value;
+
+  let r;
+  if (userModalMode === 'create') {
+    const username = document.getElementById('user-modal-username').value.trim();
+    const isAdmin = document.getElementById('user-modal-is-admin').checked;
+    r = await api('POST', '/api/admin/users', { username, password, is_admin: isAdmin });
+  } else {
+    r = await api('PUT', `/api/admin/users/${userModalTargetId}/password`, { password });
+  }
+
+  if (!r.ok) { errEl.textContent = r.data.error || '操作失败'; return; }
+  bootstrap.Modal.getInstance(document.getElementById('user-modal'))?.hide();
+  loadAdminUsers();
+});
+
+async function adminDeleteUser(userId, username) {
+  if (!confirm(`确认删除用户「${username}」及其所有数据？此操作不可撤销。`)) return;
+  const r = await api('DELETE', `/api/admin/users/${userId}`);
+  if (!r.ok) { alert(r.data.error || '删除失败'); return; }
+  loadAdminUsers();
+}
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+(async () => {
+  const r = await api('GET', '/api/me');
+  if (r.ok && r.data.user) {
+    currentUser = r.data.user;
+    document.getElementById('nav-username').textContent = currentUser.username;
+    if (currentUser.is_admin) {
+      document.getElementById('nav-admin-badge').classList.remove('d-none');
+      document.getElementById('admin-tab-item').classList.remove('d-none');
+    }
+    document.getElementById('auth-overlay').style.display = 'none';
+    await loadDicts();
+  }
+})();
+</script>
+</body>
+</html>

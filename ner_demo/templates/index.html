@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LDG-GLiNER · NER Demo</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <style>
+    body { background: #f0f2f5; }
+
+    /* ── Navbar ── */
+    .app-nav { background: linear-gradient(135deg, #1a1a2e, #16213e); padding: 0.75rem 0; }
+    .brand   { font-weight: 700; color: #e8eaf6; letter-spacing: .3px; }
+    .subtitle { font-size: .8rem; color: #90caf9; margin-left: .5rem; }
+    #modelInfo { font-size: .72rem; color: #78909c; font-family: monospace; }
+
+    /* ── Cards ── */
+    .card { border: none; border-radius: 14px; box-shadow: 0 2px 12px rgba(0,0,0,.07); }
+    .card-header {
+      background: transparent; border-bottom: 1px solid #eee;
+      font-weight: 600; font-size: .9rem; padding: .9rem 1.25rem;
+    }
+
+    /* ── Section labels ── */
+    .sec-label {
+      font-size: .7rem; font-weight: 600; letter-spacing: .8px;
+      text-transform: uppercase; color: #90a4ae; margin-bottom: .35rem;
+    }
+
+    /* ── Textarea ── */
+    #textInput {
+      border-radius: 10px; font-size: .92rem; line-height: 1.65;
+      resize: vertical; border-color: #dee2e6; transition: border-color .2s, box-shadow .2s;
+    }
+    #textInput:focus { border-color: #90caf9; box-shadow: 0 0 0 3px rgba(33,150,243,.15); }
+
+    /* ── Tags input ── */
+    .tags-box {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 5px;
+      padding: 7px 10px; border: 1px solid #dee2e6; border-radius: 10px;
+      background: white; cursor: text; min-height: 44px;
+      transition: border-color .2s, box-shadow .2s;
+    }
+    .tags-box:focus-within { border-color: #90caf9; box-shadow: 0 0 0 3px rgba(33,150,243,.15); }
+    .tag-chip {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 2px 8px 2px 10px; border-radius: 100px;
+      font-size: .82rem; font-weight: 500; color: white;
+      white-space: nowrap; user-select: none;
+    }
+    .tag-chip .rm { cursor: pointer; font-size: 1rem; opacity: .7; line-height: 1; }
+    .tag-chip .rm:hover { opacity: 1; }
+    #tagInput {
+      flex: 1; min-width: 120px; border: none; outline: none;
+      font-size: .88rem; padding: 2px 0; background: transparent;
+    }
+    .tag-hint { font-size: .74rem; color: #aaa; margin-top: 4px; }
+
+    /* ── Description section ── */
+    #descSection { border: 1px solid #e8ecf0; border-radius: 12px; padding: .85rem 1rem; background: #fafbfc; }
+
+    /* mode selector row */
+    .mode-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: .65rem; }
+    .mode-row .sec-label { margin: 0; }
+    #genBtn { font-size: .78rem; padding: 3px 12px; border-radius: 100px; }
+
+    /* individual desc card */
+    .desc-card {
+      border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden;
+      margin-bottom: 8px; background: white;
+    }
+    .desc-card-hdr {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 5px 8px 5px 10px; background: #f8fafc; border-bottom: 1px solid #e2e8f0;
+    }
+    .desc-label-pill {
+      display: inline-block; padding: 2px 10px; border-radius: 100px;
+      font-size: .8rem; font-weight: 600; color: white;
+    }
+    .desc-clear {
+      background: none; border: none; color: #bbb;
+      cursor: pointer; font-size: 1.1rem; line-height: 1; padding: 0 2px;
+    }
+    .desc-clear:hover { color: #555; }
+    .desc-textarea {
+      width: 100%; border: none; outline: none;
+      padding: 8px 10px; font-size: .83rem; color: #37474f;
+      resize: vertical; min-height: 56px; background: white; line-height: 1.5;
+    }
+    .desc-none-hint { font-size: .76rem; color: #aaa; margin-top: 4px; font-style: italic; }
+
+    /* ── Threshold ── */
+    #thresholdVal { font-weight: 700; color: #1565c0; }
+
+    /* ── Run button ── */
+    #runBtn {
+      background: linear-gradient(135deg, #1976d2, #0d47a1);
+      border: none; border-radius: 10px; font-weight: 600;
+      transition: opacity .2s, transform .1s;
+    }
+    #runBtn:hover:not(:disabled) { opacity: .9; }
+    #runBtn:active:not(:disabled) { transform: scale(.98); }
+    #runBtn:disabled { opacity: .5; }
+    .spin-sm { width: 1rem; height: 1rem; border-width: .15em; }
+    #statusBar { font-size: .8rem; min-height: 1.1rem; }
+
+    /* ── Results ── */
+    #highlightedText {
+      background: white; border: 1px solid #dee2e6; border-radius: 10px;
+      padding: 1rem 1.1rem; min-height: 100px;
+      font-size: .92rem; line-height: 2; white-space: pre-wrap; word-break: break-word;
+    }
+    .ent-mark { border-radius: 4px; padding: 1px 1px 0; cursor: default; }
+    .ent-badge {
+      display: inline-block; font-size: .62rem; font-weight: 700;
+      padding: 1px 5px; border-radius: 10px; color: white;
+      margin-left: 3px; vertical-align: middle; position: relative; top: -1px;
+    }
+
+    /* ── Legend ── */
+    #legend { display: flex; flex-wrap: wrap; gap: 6px; margin-top: .75rem; }
+    .legend-chip {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 3px 10px; border-radius: 100px; font-size: .8rem; font-weight: 500; color: white;
+    }
+    .legend-cnt { background: rgba(255,255,255,.3); border-radius: 100px; padding: 0 5px; font-size: .75rem; }
+
+    /* ── Entity table ── */
+    #entityTable { font-size: .85rem; }
+    #entityTable thead th {
+      font-size: .72rem; font-weight: 600; letter-spacing: .3px;
+      text-transform: uppercase; color: #78909c; border-top: none;
+    }
+    .type-pill { display: inline-block; padding: 2px 9px; border-radius: 100px; font-size: .78rem; font-weight: 600; color: white; }
+
+    /* ── Empty state ── */
+    .empty-state { color: #bbb; text-align: center; padding: 2.5rem 1rem; font-size: .9rem; }
+  </style>
+</head>
+<body>
+
+<nav class="app-nav mb-4">
+  <div class="container d-flex align-items-center justify-content-between">
+    <div>
+      <span class="brand">LDG-GLiNER</span>
+      <span class="subtitle">Named Entity Recognition Demo</span>
+    </div>
+    <span id="modelInfo">loading…</span>
+  </div>
+</nav>
+
+<div class="container pb-5">
+  <div class="row g-4">
+
+    <!-- ═══ Left: Input ═══ -->
+    <div class="col-xl-5 col-lg-5">
+      <div class="card">
+        <div class="card-header">Input</div>
+        <div class="card-body d-flex flex-column gap-3">
+
+          <!-- Text -->
+          <div>
+            <div class="sec-label">Text</div>
+            <textarea id="textInput" class="form-control" rows="9"
+              placeholder="Paste or type your text here…&#10;(Ctrl+Enter to run NER)"></textarea>
+          </div>
+
+          <!-- Entity types -->
+          <div>
+            <div class="sec-label">Entity Types</div>
+            <div class="tags-box" id="tagsBox">
+              <div id="tagChips"></div>
+              <input id="tagInput" type="text" placeholder="Type label and press Enter…" autocomplete="off" />
+            </div>
+            <div class="tag-hint">Press <kbd>Enter</kbd> or <kbd>,</kbd> to add · click chip to remove</div>
+          </div>
+
+          <!-- Descriptions (shown once labels exist) -->
+          <div id="descSection" style="display:none;">
+            <div class="mode-row">
+              <span class="sec-label">Descriptions</span>
+              <!-- Mode selector -->
+              <div class="btn-group btn-group-sm" role="group" aria-label="Description mode">
+                <input type="radio" class="btn-check" name="descMode" id="mode-none"  value="none"  checked autocomplete="off">
+                <label class="btn btn-outline-secondary" for="mode-none">None</label>
+
+                <input type="radio" class="btn-check" name="descMode" id="mode-cache" value="cache" autocomplete="off">
+                <label class="btn btn-outline-secondary" for="mode-cache" id="label-cache">Cache</label>
+
+                <input type="radio" class="btn-check" name="descMode" id="mode-llm"   value="llm"   autocomplete="off">
+                <label class="btn btn-outline-secondary" for="mode-llm" id="label-llm">LLM</label>
+              </div>
+              <!-- Generate button (hidden for None mode) -->
+              <button id="genBtn" class="btn btn-outline-primary btn-sm"
+                      style="display:none;" onclick="generateDescs()">Generate</button>
+            </div>
+
+            <!-- One editable card per label -->
+            <div id="descCards"></div>
+
+            <div id="descNoneHint" class="desc-none-hint">
+              Descriptions are empty. Type manually or switch mode and click Generate.
+            </div>
+          </div>
+
+          <!-- Threshold -->
+          <div>
+            <div class="sec-label d-flex justify-content-between">
+              <span>Threshold</span>
+              <span id="thresholdVal">0.50</span>
+            </div>
+            <input type="range" class="form-range mb-1" id="threshold" min="0" max="1" step="0.01" value="0.5">
+          </div>
+
+          <button id="runBtn" class="btn btn-primary py-2" onclick="runNER()">Run NER</button>
+          <div id="statusBar" class="text-center"></div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ Right: Results ═══ -->
+    <div class="col-xl-7 col-lg-7">
+      <div class="card">
+        <div class="card-header d-flex align-items-center justify-content-between">
+          <span>Results</span>
+          <span id="entityCount" class="badge bg-secondary">—</span>
+        </div>
+        <div class="card-body">
+
+          <div class="sec-label">Annotated Text</div>
+          <div id="highlightedText">
+            <div class="empty-state">Results will appear here after running NER.</div>
+          </div>
+
+          <div id="legend"></div>
+
+          <div id="tableWrap" class="mt-4" style="display:none;">
+            <div class="sec-label">Entity List</div>
+            <div class="table-responsive">
+              <table class="table table-hover table-sm mb-0" id="entityTable">
+                <thead class="table-light">
+                  <tr><th>#</th><th>Span</th><th>Type</th><th>Position</th></tr>
+                </thead>
+                <tbody id="entityRows"></tbody>
+              </table>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════════
+// Color helpers
+// ══════════════════════════════════════════════════════════
+const PALETTE = [
+  '#1976d2','#e53935','#388e3c','#f57c00','#7b1fa2',
+  '#00838f','#c2185b','#303f9f','#e64a19','#0277bd',
+  '#558b2f','#9e9d24','#00695c','#ad1457','#4527a0',
+];
+const labelColors = {};
+let palIdx = 0;
+
+function getColor(label) {
+  if (!labelColors[label]) {
+    labelColors[label] = PALETTE[palIdx % PALETTE.length];
+    palIdx++;
+  }
+  return labelColors[label];
+}
+
+function hexAlpha(hex, a) {
+  const r = parseInt(hex.slice(1,3), 16);
+  const g = parseInt(hex.slice(3,5), 16);
+  const b = parseInt(hex.slice(5,7), 16);
+  return `rgba(${r},${g},${b},${a})`;
+}
+
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ══════════════════════════════════════════════════════════
+// State
+// ══════════════════════════════════════════════════════════
+let tags = [];
+let descriptions = {};   // {label: desc_text}  — always synced with textareas
+
+// ══════════════════════════════════════════════════════════
+// Tags input
+// ══════════════════════════════════════════════════════════
+function renderTagChips() {
+  const box = document.getElementById('tagChips');
+  box.innerHTML = '';
+  for (const tag of tags) {
+    const c = getColor(tag);
+    const chip = document.createElement('span');
+    chip.className = 'tag-chip';
+    chip.style.background = c;
+    const lbl = document.createElement('span');
+    lbl.textContent = tag;
+    const rm = document.createElement('span');
+    rm.className = 'rm';
+    rm.textContent = '×';
+    rm.addEventListener('click', e => { e.stopPropagation(); removeTag(tag); });
+    chip.append(lbl, rm);
+    box.appendChild(chip);
+  }
+  syncDescSection();
+}
+
+function addTag(raw) {
+  for (const part of raw.split(',').map(s => s.trim()).filter(Boolean)) {
+    if (!tags.includes(part)) tags.push(part);
+  }
+  renderTagChips();
+}
+
+function removeTag(label) {
+  tags = tags.filter(t => t !== label);
+  delete descriptions[label];
+  renderTagChips();
+}
+
+document.getElementById('tagsBox').addEventListener('click', () =>
+  document.getElementById('tagInput').focus()
+);
+
+document.getElementById('tagInput').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter' || e.key === ',') {
+    e.preventDefault();
+    const v = this.value.trim();
+    if (v) { addTag(v); this.value = ''; }
+  } else if (e.key === 'Backspace' && !this.value && tags.length) {
+    removeTag(tags[tags.length - 1]);
+  }
+});
+
+// ══════════════════════════════════════════════════════════
+// Description section: show / hide
+// ══════════════════════════════════════════════════════════
+function syncDescSection() {
+  const sec = document.getElementById('descSection');
+  if (tags.length === 0) { sec.style.display = 'none'; return; }
+  sec.style.display = '';
+
+  // Init desc for newly added labels
+  for (const t of tags) {
+    if (!(t in descriptions)) descriptions[t] = '';
+  }
+
+  syncDescCards();
+  updateNoneHint();
+}
+
+function updateNoneHint() {
+  const hint = document.getElementById('descNoneHint');
+  const mode = getDescMode();
+  hint.style.display = (mode === 'none') ? '' : 'none';
+}
+
+// ══════════════════════════════════════════════════════════
+// Description cards  — diff-update to preserve textarea focus
+// ══════════════════════════════════════════════════════════
+function createDescCard(label) {
+  const c = getColor(label);
+  const card = document.createElement('div');
+  card.className = 'desc-card';
+  card.dataset.label = label;
+
+  const hdr = document.createElement('div');
+  hdr.className = 'desc-card-hdr';
+
+  const pill = document.createElement('span');
+  pill.className = 'desc-label-pill';
+  pill.style.background = c;
+  pill.textContent = label;
+
+  const clrBtn = document.createElement('button');
+  clrBtn.className = 'desc-clear';
+  clrBtn.title = 'Clear description';
+  clrBtn.textContent = '×';
+  clrBtn.addEventListener('click', () => {
+    descriptions[label] = '';
+    const ta = card.querySelector('.desc-textarea');
+    if (ta) ta.value = '';
+  });
+
+  hdr.append(pill, clrBtn);
+
+  const ta = document.createElement('textarea');
+  ta.className = 'desc-textarea';
+  ta.placeholder = 'Entity description (optional)…';
+  ta.value = descriptions[label] || '';
+  ta.addEventListener('input', () => { descriptions[label] = ta.value; });
+
+  card.append(hdr, ta);
+  return card;
+}
+
+function syncDescCards() {
+  const container = document.getElementById('descCards');
+
+  // Build a map of existing cards
+  const existing = {};
+  for (const card of [...container.children]) {
+    existing[card.dataset.label] = card;
+  }
+
+  // Remove cards for deleted labels
+  for (const [label, card] of Object.entries(existing)) {
+    if (!tags.includes(label)) card.remove();
+  }
+
+  // Add cards for new labels, then re-order to match tags order
+  for (const label of tags) {
+    if (!existing[label]) existing[label] = createDescCard(label);
+    container.appendChild(existing[label]);  // re-append preserves DOM nodes
+  }
+}
+
+// Called after generateDescs() to update textarea values without destroying cards
+function updateDescTextareas() {
+  const container = document.getElementById('descCards');
+  for (const card of container.children) {
+    const label = card.dataset.label;
+    const ta = card.querySelector('.desc-textarea');
+    if (ta && label !== undefined) ta.value = descriptions[label] || '';
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+// Description mode selector
+// ══════════════════════════════════════════════════════════
+function getDescMode() {
+  return document.querySelector('input[name="descMode"]:checked')?.value || 'none';
+}
+
+function onModeChange() {
+  const mode = getDescMode();
+  const genBtn = document.getElementById('genBtn');
+  if (mode === 'none') {
+    genBtn.style.display = 'none';
+  } else {
+    genBtn.style.display = '';
+    genBtn.textContent = mode === 'llm' ? 'Generate (LLM)' : 'Generate (Cache)';
+  }
+  updateNoneHint();
+}
+
+document.querySelectorAll('input[name="descMode"]').forEach(r =>
+  r.addEventListener('change', onModeChange)
+);
+
+// ══════════════════════════════════════════════════════════
+// Generate descriptions from server
+// ══════════════════════════════════════════════════════════
+async function generateDescs() {
+  const text = document.getElementById('textInput').value.trim();
+  const mode = getDescMode();
+
+  if (!text)        { setStatus('Please enter text first.', 'warn'); return; }
+  if (!tags.length) { setStatus('Please add entity types first.', 'warn'); return; }
+  if (mode === 'none') return;
+
+  const btn = document.getElementById('genBtn');
+  const origTxt = btn.textContent;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spin-sm me-1" role="status"></span>Generating…';
+  setStatus('Generating descriptions…', 'info');
+
+  try {
+    const resp = await fetch('/describe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, labels: tags, desc_mode: mode }),
+    });
+    const data = await resp.json();
+    if (!resp.ok || data.error) { setStatus('Error: ' + (data.error || resp.statusText), 'err'); return; }
+
+    for (const [lbl, desc] of Object.entries(data.descriptions || {})) {
+      if (tags.includes(lbl)) descriptions[lbl] = desc;
+    }
+    updateDescTextareas();
+    setStatus('Descriptions generated. Edit if needed, then run NER.', 'ok');
+  } catch (e) {
+    setStatus('Network error: ' + e.message, 'err');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = origTxt;
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+// Threshold slider
+// ══════════════════════════════════════════════════════════
+document.getElementById('threshold').addEventListener('input', function() {
+  document.getElementById('thresholdVal').textContent = parseFloat(this.value).toFixed(2);
+});
+
+// ══════════════════════════════════════════════════════════
+// Run NER
+// ══════════════════════════════════════════════════════════
+async function runNER() {
+  const text = document.getElementById('textInput').value.trim();
+  const threshold = parseFloat(document.getElementById('threshold').value);
+
+  if (!text)        { setStatus('Please enter some text.', 'warn'); return; }
+  if (!tags.length) { setStatus('Please add at least one entity type.', 'warn'); return; }
+
+  setLoading(true);
+  setStatus('Running inference…', 'info');
+
+  try {
+    const resp = await fetch('/predict', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, labels: tags, descriptions, threshold }),
+    });
+    const data = await resp.json();
+    if (!resp.ok || data.error) { setStatus('Error: ' + (data.error || resp.statusText), 'err'); return; }
+
+    renderHighlighted(text, data.entities);
+    renderLegend(data.entities);
+    renderTable(data.entities);
+
+    const n = data.entities.length;
+    setStatus(`Found ${n} entit${n === 1 ? 'y' : 'ies'}.`, 'ok');
+  } catch (e) {
+    setStatus('Network error: ' + e.message, 'err');
+  } finally {
+    setLoading(false);
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+// Render: highlighted text
+// ══════════════════════════════════════════════════════════
+function renderHighlighted(text, entities) {
+  const box = document.getElementById('highlightedText');
+  if (!entities || !entities.length) { box.textContent = text; return; }
+
+  // Sort by start; longer span wins ties
+  const sorted = [...entities].sort(
+    (a, b) => a.start - b.start || (b.end - b.start) - (a.end - a.start)
+  );
+
+  // Greedy non-overlapping segments
+  const segs = [];
+  let cur = 0;
+  for (const ent of sorted) {
+    if (ent.start >= cur) {
+      if (ent.start > cur) segs.push({ text: text.slice(cur, ent.start), entity: null });
+      segs.push({ text: text.slice(ent.start, ent.end), entity: ent });
+      cur = ent.end;
+    }
+  }
+  if (cur < text.length) segs.push({ text: text.slice(cur), entity: null });
+
+  let html = '';
+  for (const seg of segs) {
+    if (seg.entity) {
+      const c = getColor(seg.entity.label);
+      html +=
+        `<mark class="ent-mark" style="background:${hexAlpha(c,.15)};border-bottom:2.5px solid ${c};"` +
+        ` title="${escHtml(seg.entity.label)} [${seg.entity.start}–${seg.entity.end}]">` +
+        escHtml(seg.text) +
+        `<span class="ent-badge" style="background:${c};">${escHtml(seg.entity.label)}</span>` +
+        `</mark>`;
+    } else {
+      html += escHtml(seg.text).replace(/\n/g, '<br>');
+    }
+  }
+  box.innerHTML = html;
+}
+
+// ══════════════════════════════════════════════════════════
+// Render: legend
+// ══════════════════════════════════════════════════════════
+function renderLegend(entities) {
+  const box = document.getElementById('legend');
+  if (!entities || !entities.length) { box.innerHTML = ''; return; }
+  const counts = {};
+  for (const e of entities) counts[e.label] = (counts[e.label] || 0) + 1;
+  box.innerHTML = Object.entries(counts)
+    .sort((a, b) => b[1] - a[1])
+    .map(([lbl, cnt]) => {
+      const c = getColor(lbl);
+      return `<span class="legend-chip" style="background:${c};">${escHtml(lbl)}<span class="legend-cnt">${cnt}</span></span>`;
+    }).join('');
+}
+
+// ══════════════════════════════════════════════════════════
+// Render: entity table
+// ══════════════════════════════════════════════════════════
+function renderTable(entities) {
+  const tbody = document.getElementById('entityRows');
+  const wrap  = document.getElementById('tableWrap');
+  const badge = document.getElementById('entityCount');
+
+  if (!entities || !entities.length) {
+    wrap.style.display = 'none';
+    badge.textContent = '0 entities'; badge.className = 'badge bg-secondary';
+    return;
+  }
+
+  badge.textContent = `${entities.length} entit${entities.length === 1 ? 'y' : 'ies'}`;
+  badge.className = 'badge bg-primary';
+  wrap.style.display = '';
+
+  tbody.innerHTML = entities.map((e, i) => {
+    const c = getColor(e.label);
+    return `<tr>
+      <td class="text-muted">${i + 1}</td>
+      <td><strong>${escHtml(e.text)}</strong></td>
+      <td><span class="type-pill" style="background:${c};">${escHtml(e.label)}</span></td>
+      <td style="font-family:monospace;font-size:.8em;color:#90a4ae;">${e.start}–${e.end}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ══════════════════════════════════════════════════════════
+// UI helpers
+// ══════════════════════════════════════════════════════════
+function setLoading(on) {
+  const btn = document.getElementById('runBtn');
+  btn.disabled = on;
+  btn.innerHTML = on
+    ? '<span class="spinner-border spin-sm me-2" role="status"></span>Running…'
+    : 'Run NER';
+}
+
+const STATUS_COLORS = { info:'#546e7a', ok:'#2e7d32', warn:'#e65100', err:'#c62828' };
+function setStatus(msg, type) {
+  const bar = document.getElementById('statusBar');
+  bar.textContent = msg;
+  bar.style.color = STATUS_COLORS[type] || '#555';
+}
+
+// Ctrl+Enter shortcut
+document.getElementById('textInput').addEventListener('keydown', e => {
+  if (e.ctrlKey && e.key === 'Enter') runNER();
+});
+
+// ══════════════════════════════════════════════════════════
+// Init: fetch model info and disable unavailable modes
+// ══════════════════════════════════════════════════════════
+fetch('/info')
+  .then(r => r.json())
+  .then(info => {
+    document.getElementById('modelInfo').textContent =
+      `${info.model_arch} · ${info.device}`;
+
+    const available = info.available_modes || ['none'];
+    for (const mode of ['cache', 'llm']) {
+      if (!available.includes(mode)) {
+        const radio = document.getElementById(`mode-${mode}`);
+        const lbl   = document.getElementById(`label-${mode}`);
+        if (radio) radio.disabled = true;
+        if (lbl)   { lbl.classList.add('disabled'); lbl.title = `${mode} not loaded`; }
+      }
+    }
+  })
+  .catch(() => { document.getElementById('modelInfo').textContent = ''; });
+</script>
+</body>
+</html>

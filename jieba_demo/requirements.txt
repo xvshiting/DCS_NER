@@ -1,0 +1,4 @@
+flask>=2.3.0
+jieba>=0.42.1
+chardet>=5.0.0
+werkzeug>=2.3.0

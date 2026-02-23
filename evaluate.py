@@ -352,8 +352,25 @@ def load_gliner(cfg: EvalConfig, device: torch.device) -> nn.Module:
     train_cfg.max_span_width = cfg.max_span_width
     train_cfg.label_chunk_size = cfg.label_chunk_size
 
+    # Auto-detect whether the checkpoint was trained with FFN in fusion modules (V2/V3).
+    # Before commit "add ffn" (e672f0d), CrossAttentionFusion used a single LayerNorm
+    # named "ln"; after that commit it was upgraded to a full Transformer block with
+    # "ln1", "ffn", "ln2".  We detect which format the checkpoint uses from its keys
+    # so that old checkpoints (run1-6) can be loaded without modification.
+    state = ckpt["model_state_dict"]
+    has_fuse_ffn = any(
+        k.startswith("fusion_stacks.") and ".ln1.weight" in k for k in state
+    )  # applies to V2/V3 only
+    train_cfg.use_fuse_ffn = has_fuse_ffn
+
     model = build_model(train_cfg)
-    model.load_state_dict(ckpt["model_state_dict"])
+
+    # V1 previously had a CrossAttentionFusion module (now removed).
+    # Load old V1 checkpoints non-strictly so the obsolete fuse.* weights are
+    # silently discarded instead of raising an error.
+    has_fuse_keys = any(k.startswith("fuse.") for k in state)
+    strict = not (cfg.model_arch == "deberta_span_v1" and has_fuse_keys)
+    model.load_state_dict(state, strict=strict)
 
     # Move to device in bfloat16 if supported
     if device.type == "cuda" and torch.cuda.is_bf16_supported():

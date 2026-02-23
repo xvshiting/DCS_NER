@@ -77,6 +77,7 @@ class TrainConfig:
     label_chunk_size: int = 16
     num_fusion_stacks: int = 2        # only used by deberta_span_v2 / deberta_span_v3
     ffn_ratio: int = 4                # FFN hidden dim multiplier in fusion blocks
+    use_fuse_ffn: bool = True         # full Transformer block in fusion modules (set False to load pre-"add ffn" ckpts)
 
     # Training
     output_dir: str = "checkpoints"
@@ -151,9 +152,11 @@ def build_model(cfg: TrainConfig) -> nn.Module:
         label_chunk_size=cfg.label_chunk_size,
     )
     if cfg.model_arch == "deberta_span_v2":
-        return DebertaSchemaSpanModelV2(**common, num_fusion_stacks=cfg.num_fusion_stacks)
+        return DebertaSchemaSpanModelV2(**common, num_fusion_stacks=cfg.num_fusion_stacks,
+                                        use_fuse_ffn=cfg.use_fuse_ffn)
     if cfg.model_arch == "deberta_span_v3":
-        return DebertaSchemaSpanModelV3(**common, num_fusion_stacks=cfg.num_fusion_stacks)
+        return DebertaSchemaSpanModelV3(**common, num_fusion_stacks=cfg.num_fusion_stacks,
+                                        use_fuse_ffn=cfg.use_fuse_ffn)
     return DebertaSchemaSpanModel(**common)
 
 

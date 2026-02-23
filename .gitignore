@@ -40,3 +40,4 @@ wandb/
 .env.production.local
 eval_results/ 
 descriptions_cache.jsonl
+__pycache__/
