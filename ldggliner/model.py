@@ -60,8 +60,23 @@ def _make_ffn(d_model: int, ffn_ratio: int, dropout: float) -> nn.Sequential:
         nn.Dropout(dropout),
     )
 
-
 class CrossAttentionFusion(nn.Module):
+    """Label->Text cross-attention. Q attends to H."""
+    def __init__(self, d_model: int, num_heads: int = 8, dropout: float = 0.1):
+        super().__init__()
+        self.attn = nn.MultiheadAttention(embed_dim=d_model, num_heads=num_heads, dropout=dropout, batch_first=True)
+        self.ln = nn.LayerNorm(d_model)
+
+    def forward(self, q: torch.Tensor, h: torch.Tensor, h_key_padding_mask: Optional[torch.BoolTensor] = None) -> torch.Tensor:
+        """
+        q: (B, M, d)
+        h: (B, N, d)
+        h_key_padding_mask: (B, N) True for PAD (to mask out)
+        """
+        ctx, _ = self.attn(query=q, key=h, value=h, key_padding_mask=h_key_padding_mask, need_weights=False)
+        return self.ln(q + ctx)
+
+class CrossAttentionFusionV2(nn.Module):
     """Label->Text cross-attention. Q attends to H.
 
     use_ffn=True  (default): full Transformer block — attention + FFN, two LayerNorms
@@ -315,6 +330,7 @@ class DebertaSchemaSpanModel(nn.Module):
         label_chunk_size: int = 16,
         use_pos_weight: bool = False,
         pos_weight_cap: float = 200.0,
+        num_heads: int = 8,
         **kwargs,  # absorb unused args forwarded by build_model (num_heads, ffn_ratio)
     ):
         super().__init__()
@@ -339,7 +355,7 @@ class DebertaSchemaSpanModel(nn.Module):
             span_in = d_model * 2
 
         self.span_ffn = make_mlp(span_in, hidden_dim=d_model * 4, output_dim=d_model, dropout=dropout)
-
+        self.fuse = CrossAttentionFusion(d_model=d_model, num_heads=num_heads, dropout=dropout)
         # Optional: bias term per label (helps calibration when many negatives)
         self.label_bias = nn.Parameter(torch.zeros(1))
 
@@ -400,7 +416,8 @@ class DebertaSchemaSpanModel(nn.Module):
 
         # 2) Encode labels (label+desc) — no cross-attention fusion
         Q = self.encode_labels(batch.label_input_ids, batch.label_attention_mask, batch_size=B, num_labels=M)  # (B, M, d)
-
+        pad_mask = batch.text_attention_mask == 0  # (B, N) bool
+        Qf = self.fuse(Q, H, h_key_padding_mask=pad_mask)  # (B, M, d)
         # 3) Enumerate spans (based on full N, later masked by attention_mask)
         start_idx, end_idx, width = self.span_enum.enumerate(seq_len=N, device=device)
         S = start_idx.numel()
@@ -418,7 +435,7 @@ class DebertaSchemaSpanModel(nn.Module):
         span_vec = self.span_ffn(span_in)
 
         # 5) Logits
-        logits = torch.einsum("bsd,bmd->bsm", span_vec, Q) + self.label_bias  # (B, S, M)
+        logits = torch.einsum("bsd,bmd->bsm", span_vec, Qf) + self.label_bias  # (B, S, M)
 
         # 6) Span validity mask
         attn = batch.text_attention_mask.bool()
