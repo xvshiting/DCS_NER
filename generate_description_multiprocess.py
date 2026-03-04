@@ -75,7 +75,7 @@ def generate_description(data):
         {'role': 'user', 'content': prompt}
     ]
     response = dashscope.Generation.call(
-        api_key=os.getenv('DASHSCOPE_API_KEY', "sk-b95c066723574c7ba72147797a568395"),
+        api_key=os.getenv('DASHSCOPE_API_KEY'),
         model="qwen-plus",
         messages=messages,
         result_format='message'
